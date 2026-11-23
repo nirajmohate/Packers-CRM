@@ -10,6 +10,23 @@ const isTouched = (cfg: ModuleConfig, r: Row) =>
     return v !== '' && !(c.default !== undefined && v === c.default);
   });
 
+/** Problems with one item row, keyed by column. Used for every row on save and for the "Add item" button. */
+export function itemErrors(cfg: ModuleConfig, r: Row): Record<string, string> {
+  const e: Record<string, string> = {};
+  for (const c of cfg.columns ?? []) {
+    const v = (r[c.key] || '').trim();
+    if (c.required && !v) e[c.key] = 'Required';
+    else if (c.type === 'number' && v) {
+      const n = Number(v);
+      if (!Number.isFinite(n) || n < 0) e[c.key] = 'Enter a valid number';
+      else if ((c.key === 'qty' || c.key === 'packages') && n <= 0) e[c.key] = 'Must be more than 0';
+    }
+  }
+  if (cfg.money && !(r.rate || '').trim()) e.rate = 'Enter the rate';
+  return e;
+}
+export const rowTouched = (cfg: ModuleConfig, r: Row) => !!cfg.columns && isTouched(cfg, r);
+
 export interface ValidateCtx {
   docDate: string;
   number: string;
@@ -50,17 +67,7 @@ export function validateDoc(cfg: ModuleConfig, data: Record<string, string>, ite
     items.forEach((r, i) => {
       if (!isTouched(cfg, r)) return;
       started++;
-      for (const c of cfg.columns!) {
-        const v = (r[c.key] || '').trim();
-        const k = `item-${i}-${c.key}`;
-        if (c.required && !v) e[k] = 'Required';
-        else if (c.type === 'number' && v) {
-          const n = Number(v);
-          if (!Number.isFinite(n) || n < 0) e[k] = 'Enter a valid number';
-          else if ((c.key === 'qty' || c.key === 'packages') && n <= 0) e[k] = 'Must be more than 0';
-        }
-      }
-      if (cfg.money && !(r.rate || '').trim()) e[`item-${i}-rate`] = 'Enter the rate';
+      for (const [k, m] of Object.entries(itemErrors(cfg, r))) e[`item-${i}-${k}`] = m;
     });
     if (cfg.itemsRequired && started === 0) e._items = 'Add at least one item';
   }

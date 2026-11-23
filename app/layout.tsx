@@ -4,11 +4,11 @@ import Shell from '@/components/Shell';
 import RegisterSW from '@/components/RegisterSW';
 
 export const metadata: Metadata = {
-  title: 'Packers & Movers CRM',
+  title: 'Cloud Packers CRM',
   description: 'Quotations, bills, LR and more for packers & movers',
   manifest: '/manifest.webmanifest',
-  icons: { icon: '/icon-192.png', apple: '/apple-touch-icon.png' },
-  appleWebApp: { capable: true, title: 'Packers CRM', statusBarStyle: 'default' },
+  icons: { icon: [{ url: '/favicon.ico', sizes: 'any' }, { url: '/icon-192.png', type: 'image/png' }], apple: '/apple-touch-icon.png' },
+  appleWebApp: { capable: true, title: 'Cloud Packers', statusBarStyle: 'default' },
 };
 export const viewport: Viewport = { width: 'device-width', initialScale: 1, themeColor: '#1a64d0' };
 

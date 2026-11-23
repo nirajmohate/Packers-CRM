@@ -1,9 +1,9 @@
 /* Keeps the app installable and its static files fast. Documents and pages always come from the server, so
    what you see is never out of date and nothing is cached across different users. */
-const VERSION = 'pm-v3';
+const VERSION = 'pm-v4'; // bumped: new Cloud Packers icons
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(VERSION).then((c) => c.addAll(['/offline.html', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png'])).then(() => self.skipWaiting()));
+  event.waitUntil(caches.open(VERSION).then((c) => c.addAll(['/offline.html', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png', '/logo.jpg'])).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', (event) => {
   event.waitUntil((async () => { for (const k of await caches.keys()) if (k !== VERSION) await caches.delete(k); await self.clients.claim(); })());

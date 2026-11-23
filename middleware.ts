@@ -1,7 +1,8 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { jwtVerify } from 'jose';
 
-const PUBLIC = ['/login', '/setup', '/offline.html'];
+// '/s' is the customer survey form opened from a one-time link (no login; the API checks the link)
+const PUBLIC = ['/login', '/setup', '/offline.html', '/s'];
 
 /** Page gate only: sends signed-out visitors to the login page. The API checks every request against the database. */
 export async function middleware(req: NextRequest) {
@@ -27,5 +28,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!api/|_next/|favicon.ico|icon-.*|apple-touch-icon.png|manifest.webmanifest|sw.js).*)'],
+  matcher: ['/((?!api/|_next/|favicon.ico|icon-.*|apple-touch-icon.png|manifest.webmanifest|sw.js|logo.jpg).*)'],
 };

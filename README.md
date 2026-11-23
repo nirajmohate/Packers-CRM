@@ -1,4 +1,53 @@
-# Packers & Movers CRM: Stage 2 (database + login)
+# Cloud Packers CRM: Stage 2 (database + login)
+
+## What changed in 0.5.0
+- The phone's bottom menu (Home, Documents, +, Payments, Settings) is on every page, including new/edit forms and
+  document pages. Save / Cancel are at the end of the form; Download PDF / WhatsApp / Edit are at the top of a document.
+- Survey List in the side menu has 3 options: Add New, Go To List, **Share survey link** (on the phone: New, List, Link).
+- Dashboard: a new picture (city, road and a Cloud Packers truck, drawn in SVG in `components/HeroArt.tsx`) and the
+  greeting "Hello, <branch name>!" (admin on All branches sees "Hello, All branches!").
+- Responsive fixes found by testing every page at 320, 375 and 1366 px wide: list headers on phones, labels that line
+  up side by side, text boxes that grow with their text (terms no longer cut off), no wrapping document numbers,
+  payment totals on phones, status box on document pages, the scroll counter no longer covers rows.
+- Security headers: nosniff and no framing by other sites.
+
+## What changed in 0.4.0
+- **Menu dropdowns**: each document in the side menu opens to **Add New** and **Go To List**. On the phone, the
+  Documents button shows **New** and **List** for each one.
+- **Lists load 10 at a time** and add 10 more as you scroll near the end. A small counter on the right shows how many
+  are loaded and how many are left. This is on every list: documents, customers, payments, receipts, reports,
+  recycle bin and the audit log.
+- **One document per line**: lists are tables (number and date, customer and phone, from/to city, amount, status,
+  PDF button and a ⋯ menu with View, Edit and "Make quotation / bill / …" from this document).
+- **More colour and Hindi**: every menu item, page title, form section, field, button and status also shows Hindi.
+  PDFs stay in English (the PDF fonts cannot print Hindi). Change the Hindi words in `lib/hi.ts`.
+- **Survey link for customers**: Survey List > **Share survey link**. The customer opens the link on their phone,
+  fills their details and items, and presses Send. The survey appears in your Survey List with the status
+  **From customer**. From the ⋯ menu make a Quotation, Bill or Packing List from it.
+  Security: each link is random, works **once**, expires after **7 days**, can be cancelled, is stored only as a
+  hash, and is limited per address. The customer can fill only the customer, move and item fields.
+- **New item entry**: type the item in the boxes, press **Add item** (or Enter): it goes into the list below and the
+  boxes empty for the next one. Use the pencil to change an item, the bin to remove it. An item left in the boxes
+  is added automatically when you save.
+- Survey List now also has From city, To city, Moving date and Service type (so they carry over to a quotation).
+
+## What changed in 0.3.0
+- **Documents**: only Quotation, Survey List, Packing List, LR/Bilty, Vehicle Condition, Proforma Invoice, Bill/Invoice,
+  Money Receipt and FOV-SCF Form. Payment Voucher, TWS, NOC, Loading Slip and Letterhead are removed from the app.
+  Old documents of those types are NOT deleted from the database; they are just hidden.
+- **Faster loading**: after the first load the app asks the server only for documents that changed (new, edited, deleted)
+  instead of downloading everything every minute. A full reload still happens every 15 minutes as a safety net.
+  Lists show 30 at a time with a "Show more" button.
+- **Filters** on every document list (Quotation, Bills, …): date (today, last 7 days, this/last month, last 3 months,
+  this/last financial year, custom range), document date or moving date, city, amount min/max, sort order, status and search.
+  Picking a date older than what is loaded fetches the older documents. Filters stay while you open a document and come back.
+- **Cloud Packers logo** in the menu, the phone header, the sign-in page, the app icon and on PDFs
+  (a logo uploaded in Settings still takes priority on PDFs).
+- **"Are you sure?" popup** before approving/rejecting a quotation on the dashboard, changing a status, cancelling a bill
+  or moving a document to the recycle bin.
+- **Darker outlines** on all input boxes.
+- New index on documents (`updatedAt`); MongoDB builds it automatically on the next start.
+
 
 Next.js 14 (App Router) + TypeScript + Tailwind CSS + MongoDB (Mongoose). One project: the API lives in `app/api`.
 Mobile-first. Admin + branch managers, branch-separated data, numbering per branch, audit log, files in the database.
@@ -62,7 +111,7 @@ If one is still missing: `npm install jose bcryptjs mongoose zod dotenv`
 
 **One-time import**: open the old (Stage 1) app's browser, sign in as admin and go to Admin > Import old data. Map each old branch to a real one, import, check, then remove the old data from the browser. Receipts are re-linked to their bills; numbers that already exist are skipped.
 
-**Loading**: the app loads this and last financial year plus every unpaid older bill. Reports can reach further back. Everything refreshes when you return to the tab and every minute.
+**Loading**: the app loads this and last financial year plus every unpaid older bill. Reports and list filters can reach further back (older documents are fetched only when asked for). After that it downloads only what changed, when you return to the tab and every minute.
 
 ## 4. Where things live
 - `app/api/**`      : the API. `lib/server/**`: database models, auth, documents service (numbering, validation, audit), settings, importer.

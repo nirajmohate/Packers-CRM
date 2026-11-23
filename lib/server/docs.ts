@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Types } from 'mongoose';
 import type { AuditChange, Company, DocRecord, ModuleConfig, Row, SessionUser } from '../types';
-import { BY_SLUG } from '../config';
+import { BY_SLUG, MODULES } from '../config';
 import { billInfo } from '../ledger';
 import { fyOf, formatNumber } from '../numbering';
 import { cleanData, validateDoc } from '../validateDoc';
@@ -12,6 +12,8 @@ import { loadBundle } from './settings';
 
 type Rec = Record<string, any>;
 const live = { deletedAt: { $exists: false } };
+/** Only document types the app still offers. Older documents of removed types stay in the database untouched, they are just not shown. */
+const IN_USE = { $in: MODULES.map((m) => m.slug) };
 const iso = (d: unknown) => (d ? new Date(d as string).toISOString() : undefined);
 const DAY = 86_400_000;
 export const TRASH_DAYS = 30;
@@ -28,7 +30,7 @@ const bad = (msg: string, fields: Record<string, string>) => new ApiError(422, m
 
 async function loadDoc(user: SessionUser, id: string, deleted = false): Promise<Rec> {
   if (!Types.ObjectId.isValid(id)) throw new ApiError(404, 'Document not found');
-  const d = await Doc.findOne({ _id: id, ...scopeOf(user), ...(deleted ? { deletedAt: { $exists: true } } : live) }).lean();
+  const d = await Doc.findOne({ _id: id, type: IN_USE, ...scopeOf(user), ...(deleted ? { deletedAt: { $exists: true } } : live) }).lean();
   if (!d) throw new ApiError(404, 'Document not found');
   return d as Rec;
 }
@@ -214,6 +216,8 @@ export async function updateDoc(user: SessionUser, id: string, input: Rec) {
 export async function setStatus(user: SessionUser, id: string, status: string) {
   const cur = await loadDoc(user, id);
   const cfg = BY_SLUG[cur.type];
+  if (!cfg) throw new ApiError(400, 'Unknown document type');
+  if (typeof status !== 'string') throw new ApiError(400, 'Unknown status');
   let next = status;
   if (cfg.slug === 'bill') {
     if (status === 'Cancelled') next = 'Cancelled';
@@ -263,7 +267,7 @@ export async function emptyTrash(user: SessionUser, olderThanDays = 0) {
 /* ---------- reading ---------- */
 export async function listDocs(user: SessionUser, opts: { since: string; branchId?: string }) {
   if (!validDate(opts.since)) throw new ApiError(400, 'Invalid date');
-  const base: Rec = { ...scopeOf(user), ...live };
+  const base: Rec = { ...scopeOf(user), ...live, type: IN_USE };
   if (user.role === 'admin' && opts.branchId && Types.ObjectId.isValid(opts.branchId)) base.branchId = opts.branchId;
   const inWindow = (await Doc.find({ ...base, docDate: { $gte: opts.since } }).sort({ docDate: -1, createdAt: -1 }).limit(60_000).lean()) as Rec[];
   // unpaid bills older than the window (and their receipts) are always included so balances stay correct
@@ -276,8 +280,25 @@ export async function listDocs(user: SessionUser, opts: { since: string; branchI
 export async function listTrash(user: SessionUser) {
   if (user.role === 'admin') await emptyTrash(user, TRASH_DAYS);
   const since = new Date(Date.now() - TRASH_DAYS * DAY);
-  const rows = (await Doc.find({ ...scopeOf(user), deletedAt: { $gte: since } }).sort({ deletedAt: -1 }).limit(500).lean()) as Rec[];
+  const rows = (await Doc.find({ ...scopeOf(user), type: IN_USE, deletedAt: { $gte: since } }).sort({ deletedAt: -1 }).limit(500).lean()) as Rec[];
   return rows.map(docOut);
+}
+
+/**
+ * Only what changed since the last sync (new, edited, status changed, deleted, restored).
+ * The app asks for this every minute instead of downloading every document again, so it stays fast with thousands of documents.
+ * Deleted documents come back as ids to remove.
+ */
+export const CHANGES_LIMIT = 2000;
+export async function listChanges(user: SessionUser, after: Date) {
+  const rows = (await Doc.find({ ...scopeOf(user), type: IN_USE, updatedAt: { $gt: after } })
+    .sort({ updatedAt: 1 }).limit(CHANGES_LIMIT + 1).lean()) as Rec[];
+  // too many changes at once (for example a big import): the app does a full reload instead
+  if (rows.length > CHANGES_LIMIT) return { full: true as const };
+  const docs: DocRecord[] = [];
+  const removed: string[] = [];
+  for (const r of rows) (r.deletedAt ? removed.push(String(r._id)) : docs.push(docOut(r)));
+  return { full: false as const, docs, removed };
 }
 
 export async function getDoc(user: SessionUser, id: string) {

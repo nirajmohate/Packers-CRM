@@ -1,16 +1,18 @@
 'use client';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Plus, Trash2 } from 'lucide-react';
-import type { Column, DocRecord, Field, ModuleConfig, Row } from '@/lib/types';
+import { ArrowLeft } from 'lucide-react';
+import ItemsEditor from './ItemsEditor';
+import { AutoTextarea, FieldLabel, Hi } from './ui';
+import type { DocRecord, Field, ModuleConfig, Row } from '@/lib/types';
 import { GST_RATES, HOUSEHOLD, SERVICE_PRESETS, suggestionNames } from '@/lib/config';
 import { ApiFail, clearDraft, createDoc, getRates, readDraft, rememberRates, updateDoc, useActiveBranch, useActiveBranches, useAllDocs, useCompanyFor, useHydrated, useSession, useTermsFor, writeDraft } from '@/lib/store';
 import { api } from '@/lib/api';
 import { docCalc, billInfo, openBills, receiptsFor } from '@/lib/ledger';
-import { lineAmount, moneyCalc, moneyLines, num, round2 } from '@/lib/calc';
+import { moneyCalc, moneyLines, num, round2 } from '@/lib/calc';
 import { amountInWords, inr, todayISO } from '@/lib/format';
 import { isVisible } from '@/lib/fields';
-import { cleanData, validateDoc } from '@/lib/validateDoc';
+import { cleanData, itemErrors, rowTouched, validateDoc } from '@/lib/validateDoc';
 import { normalize, validateValue } from '@/lib/validate';
 import { stateFromGstin } from '@/lib/states';
 
@@ -38,7 +40,7 @@ function FieldInput({ f, value, error, bills, onChange, onBill }: { f: Field; va
         {bills?.map((b) => <option key={b.id} value={b.id}>{b.label}</option>)}
       </select>
     );
-  if (f.type === 'textarea') return <textarea {...common} rows={f.rows ?? 2} className={cls} value={value} placeholder={f.placeholder} onChange={(e) => onChange(e.target.value)} />;
+  if (f.type === 'textarea') return <AutoTextarea {...common} minRows={f.rows ?? 2} className={cls} value={value} placeholder={f.placeholder} maxLength={f.key === 'body' ? 20000 : 2000} onChange={(e) => onChange(e.target.value)} />;
   if (f.type === 'select')
     return (
       <select {...common} className={cls} value={value} onChange={(e) => onChange(e.target.value)}>
@@ -54,26 +56,6 @@ function FieldInput({ f, value, error, bills, onChange, onBill }: { f: Field; va
       autoCapitalize={f.upper ? 'characters' : undefined}
       step={f.type === 'number' ? 'any' : undefined} min={f.type === 'number' ? f.min : undefined} max={f.type === 'number' ? f.max : undefined}
       onChange={(e) => onChange(f.upper ? e.target.value.toUpperCase() : e.target.value)}
-    />
-  );
-}
-
-function CellInput({ c, value, listId, error, id, onChange }: { c: Column; value: string; listId?: string; error?: string; id: string; onChange: (v: string) => void }) {
-  const cls = `input ${error ? 'border-red-400 ring-2 ring-red-100' : ''}`;
-  const common = { id, 'data-err': error ? '1' : undefined } as const;
-  if (c.type === 'select')
-    return (
-      <select {...common} className={cls} value={value} onChange={(e) => onChange(e.target.value)}>
-        <option value="">{c.emptyLabel ?? 'Select'}</option>
-        {c.options?.map((o) => <option key={o} value={o}>{c.key === 'gst' ? o + '%' : o}</option>)}
-      </select>
-    );
-  return (
-    <input
-      {...common} className={cls} value={value} placeholder={c.placeholder} list={listId}
-      type={c.type === 'number' ? 'number' : 'text'} inputMode={c.type === 'number' ? 'decimal' : undefined}
-      step={c.type === 'number' ? 'any' : undefined} min={c.type === 'number' ? 0 : undefined}
-      onChange={(e) => onChange(e.target.value)}
     />
   );
 }
@@ -100,7 +82,11 @@ export default function DocForm({ cfg, initial, prefill, draftKey }: { cfg: Modu
   const defaultTerms = termsFor(cfg.slug, branchId || null, cfg.terms).join('\n');
   const [status, setStatus] = useState(initial?.status ?? cfg.statuses[0]);
   const [data, setData] = useState<Record<string, string>>(initial?.data ?? { gstRate: '0', gstMode: 'Auto', roundOff: '1', discountType: '₹', ...(prefill?.data ?? {}) });
-  const [items, setItems] = useState<Row[]>(initial?.items?.length ? initial.items : prefill?.items?.length ? prefill.items : cfg.columns ? [blankRow(cfg)] : []);
+  const [items, setItems] = useState<Row[]>(() => (initial?.items?.length ? initial.items : prefill?.items ?? []).filter((x) => rowTouched(cfg, x)));
+  // the "new item" boxes above the list; `editing` is the list position being changed, or null for a new item
+  const [entry, setEntry] = useState<Row>(() => blankRow(cfg));
+  const [editing, setEditing] = useState<number | null>(null);
+  const [entryErrors, setEntryErrors] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [draft, setDraft] = useState<Draft | null>(null);
   const dirty = useRef(false);
@@ -141,7 +127,8 @@ export default function DocForm({ cfg, initial, prefill, draftKey }: { cfg: Modu
   const restoreDraft = () => {
     if (!draft) return;
     setNumber(draft.number); setNumberTouched(draft.numberTouched); setDocDate(draft.docDate); setBranchId(draft.branchId);
-    setStatus(draft.status); setData(draft.data); setItems(draft.items.length ? draft.items : cfg.columns ? [blankRow(cfg)] : []);
+    setStatus(draft.status); setData(draft.data); setItems((draft.items ?? []).filter((x) => rowTouched(cfg, x)));
+    setEntry(blankRow(cfg)); setEditing(null); setEntryErrors({});
     dirty.current = true;
     setDraft(null);
   };
@@ -212,26 +199,45 @@ export default function DocForm({ cfg, initial, prefill, draftKey }: { cfg: Modu
     return n;
   };
 
-  const setCell = (i: number, k: string, v: string) => {
+  /* ----- items: entry boxes + list ----- */
+  const setEntryCell = (k: string, v: string) => {
     touch();
-    setItems((p) => p.map((r, j) => (j !== i ? r : k === 'description' ? fillFromDescription(r, v) : { ...r, [k]: v })));
-    setErrors((e) => { const c = { ...e }; delete c[`item-${i}-${k}`]; delete c._items; return c; });
+    setEntry((r) => (k === 'description' ? fillFromDescription(r, v) : { ...r, [k]: v }));
+    setEntryErrors((e) => { const c = { ...e }; delete c[k]; return c; });
   };
-
-  const addPreset = (name: string) => {
+  /** The list as it will be saved: the boxes count too, so a typed item is never lost if Save is pressed before Add item. */
+  const withEntry = (list: Row[]): Row[] => {
+    if (editing !== null) return list.map((x, j) => (j === editing ? entry : x));
+    return rowTouched(cfg, entry) ? [...list, entry] : list;
+  };
+  const addEntry = (): boolean => {
+    const errs = itemErrors(cfg, entry);
+    if (Object.keys(errs).length) { setEntryErrors(errs); return false; }
     touch();
-    setItems((p) => {
-      const last = p[p.length - 1];
-      const base = last && isUntouched(cfg, last) ? p.slice(0, -1) : p;
-      return [...base, fillFromDescription(blankRow(cfg), name)];
-    });
-    setErrors((e) => { const c = { ...e }; delete c._items; return c; });
+    setItems((p) => withEntry(p));
+    setEntry(blankRow(cfg)); setEditing(null); setEntryErrors({});
+    setErrors((e) => { const c: Record<string, string> = {}; for (const [k, v] of Object.entries(e)) if (!k.startsWith('item-') && k !== '_items') c[k] = v; return c; });
+    return true;
   };
+  const editItem = (i: number) => {
+    if (editing === null && rowTouched(cfg, entry) && !window.confirm('The boxes have an item you have not added yet. Replace it with this item?')) return;
+    setEntry({ ...blankRow(cfg), ...items[i] }); setEditing(i); setEntryErrors({});
+    setTimeout(() => document.getElementById('items-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 30);
+  };
+  const cancelEdit = () => { setEntry(blankRow(cfg)); setEditing(null); setEntryErrors({}); };
+  const removeItem = (i: number) => {
+    touch();
+    setItems((p) => p.filter((_, j) => j !== i));
+    if (editing === i) cancelEdit(); else if (editing !== null && editing > i) setEditing(editing - 1);
+    setErrors((e) => { const c: Record<string, string> = {}; for (const [k, v] of Object.entries(e)) if (!k.startsWith('item-')) c[k] = v; return c; });
+  };
+  const pickChip = (name: string) => { touch(); setEntry((r) => fillFromDescription(isUntouched(cfg, r) ? blankRow(cfg) : r, name)); setEntryErrors({}); };
 
   /* ----- live totals ----- */
-  const live: DocRecord = { id: initial?.id ?? 'draft', type: cfg.slug, number, status, docDate, createdAt: '', updatedAt: '', data, items };
-  const liveCalc = useMemo(() => docCalc(live, cfg, allDocs, co.state), [data, items, cfg, allDocs, co.state]); // eslint-disable-line react-hooks/exhaustive-deps
-  const m = cfg.money ? moneyCalc({ data, items: items.filter((r) => (r.description || '').trim()) }, { home: co.state, advanceMode: cfg.advance ?? 'required' }) : null;
+  const shownItems = cfg.columns ? withEntry(items) : items;
+  const live: DocRecord = { id: initial?.id ?? 'draft', type: cfg.slug, number, status, docDate, createdAt: '', updatedAt: '', data, items: shownItems };
+  const liveCalc = useMemo(() => docCalc(live, cfg, allDocs, co.state), [data, items, entry, editing, cfg, allDocs, co.state]); // eslint-disable-line react-hooks/exhaustive-deps
+  const m = cfg.money ? moneyCalc({ data, items: shownItems.filter((r) => (r.description || '').trim()) }, { home: co.state, advanceMode: cfg.advance ?? 'required' }) : null;
 
   const selectedBillBalance = cfg.slug === 'receipt' && data.againstId
     ? (() => { const b = allDocs.find((d) => d.id === data.againstId); return b ? billInfo(b, allDocs, co.state, initial?.id).calc.balance : null; })()
@@ -241,7 +247,20 @@ export default function DocForm({ cfg, initial, prefill, draftKey }: { cfg: Modu
   const submit = async () => {
     if (saving) return;
     setFormError('');
-    const errs = validateDoc(cfg, data, items, { docDate, number: number || 'AUTO', docs: allDocs, selfId: initial?.id, home: co.state, billBalance: selectedBillBalance, receivedBefore: cfg.slug === 'bill' && initial ? round2(receiptsFor(initial, allDocs).reduce((a, r) => a + num(r.data.amount), 0)) : 0 });
+    // an item still in the boxes is added (or updated) first
+    let list = items;
+    if (cfg.columns && (editing !== null || rowTouched(cfg, entry))) {
+      const ie = itemErrors(cfg, entry);
+      if (Object.keys(ie).length) {
+        setEntryErrors(ie);
+        setFormError('Finish the item in the boxes (or clear them), then save.');
+        setTimeout(() => document.getElementById('items-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
+        return;
+      }
+      list = withEntry(items);
+      setItems(list); setEntry(blankRow(cfg)); setEditing(null); setEntryErrors({});
+    }
+    const errs = validateDoc(cfg, data, list, { docDate, number: number || 'AUTO', docs: allDocs, selfId: initial?.id, home: co.state, billBalance: selectedBillBalance, receivedBefore: cfg.slug === 'bill' && initial ? round2(receiptsFor(initial, allDocs).reduce((a, r) => a + num(r.data.amount), 0)) : 0 });
     if (!branchId) errs.branchId = 'Choose a branch';
     if (Object.keys(errs).length) {
       setErrors(errs);
@@ -251,7 +270,7 @@ export default function DocForm({ cfg, initial, prefill, draftKey }: { cfg: Modu
     const cleaned = cleanData(cfg, data);
     const termsText = (data.terms ?? defaultTerms).trim();
     if (data.terms !== undefined && termsText !== defaultTerms.trim()) cleaned.terms = termsText; else delete cleaned.terms;
-    const rows = cfg.columns ? items.filter((r) => !isUntouched(cfg, r)).map((r) => ({ ...r, ...(r.description ? { description: r.description.trim() } : {}) })) : [];
+    const rows = cfg.columns ? list.filter((r) => !isUntouched(cfg, r)).map((r) => ({ ...r, ...(r.description ? { description: r.description.trim() } : {}) })) : [];
 
     if (isNew) {
       const phone = cleaned.customerPhone;
@@ -279,14 +298,14 @@ export default function DocForm({ cfg, initial, prefill, draftKey }: { cfg: Modu
   };
 
   const listId = cfg.suggest ? 'suggest-' + cfg.suggest : undefined;
-  const chips = cfg.suggest ? suggestionNames(cfg.suggest).filter((n) => !items.some((r) => (r.description || '').toLowerCase() === n.toLowerCase())).slice(0, cfg.suggest === 'services' ? 6 : 8) : [];
+  const chips = cfg.suggest ? suggestionNames(cfg.suggest).filter((n) => !shownItems.some((r) => (r.description || '').toLowerCase() === n.toLowerCase())).slice(0, cfg.suggest === 'services' ? 6 : 8) : [];
   const autoNote = m && !m.igst && !data.placeOfSupply ? 'Place of supply is empty, so CGST + SGST is used.' : '';
 
   return (
     <div>
       <div className="mb-4 flex items-center gap-3">
         <button onClick={() => router.back()} className="grid h-10 w-10 place-items-center rounded-full bg-white shadow-sm ring-1 ring-slate-200" aria-label="Back"><ArrowLeft size={18} /></button>
-        <h1 className="text-xl font-bold text-slate-900">{initial ? 'Edit' : 'New'} {cfg.title}</h1>
+        <h1 className="text-xl font-bold" style={{ color: cfg.color }}>{initial ? 'Edit' : 'New'} {cfg.title} <Hi t={cfg.title} className="text-base text-slate-500" /></h1>
       </div>
 
       {formError && <div role="alert" className="mb-4 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-700">{formError}</div>}
@@ -301,7 +320,7 @@ export default function DocForm({ cfg, initial, prefill, draftKey }: { cfg: Modu
 
       <div className="space-y-4 lg:grid lg:grid-cols-2 lg:gap-4 lg:space-y-0 [&>*]:lg:self-start">
         <section className="card space-y-3 p-4">
-          <h2 className="font-semibold text-slate-900">Document</h2>
+          <h2 className="section-title" style={{ borderColor: cfg.color }}>Document <Hi t="Document" className="text-sm text-slate-500" /></h2>
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
               <label className="label" htmlFor="f-number">Number</label>
@@ -333,7 +352,7 @@ export default function DocForm({ cfg, initial, prefill, draftKey }: { cfg: Modu
           if (!fields.length) return null;
           return (
             <section key={s.title} className="card space-y-3 p-4">
-              <h2 className="font-semibold text-slate-900">{s.title}</h2>
+              <h2 className="section-title" style={{ borderColor: cfg.color }}>{s.title} <Hi t={s.title} className="text-sm text-slate-500" /></h2>
               <div className="grid grid-cols-2 gap-3">
                 {fields.map((f) => {
                   const phone = f.key === 'customerPhone' ? normalize('phone', data.customerPhone || '') : '';
@@ -341,7 +360,7 @@ export default function DocForm({ cfg, initial, prefill, draftKey }: { cfg: Modu
                   const showMatch = match && (match.customerName !== (data.customerName || '') || !(data.customerName || '').trim());
                   return (
                     <div key={f.key} className={f.half ? '' : 'col-span-2'}>
-                      <label className="label" htmlFor={'f-' + f.key}>{f.label}{f.required && <span className="text-red-500"> *</span>}</label>
+                      <FieldLabel text={f.label} required={f.required} htmlFor={'f-' + f.key} />
                       <FieldInput f={f} value={data[f.key] ?? ''} error={errors[f.key]} bills={bills} onChange={(v) => setField(f.key, v)} onBill={pickBill} />
                       <Err msg={errors[f.key]} />
                       {!errors[f.key] && f.hint && <p className="mt-1 text-xs text-slate-400">{f.hint}</p>}
@@ -365,46 +384,21 @@ export default function DocForm({ cfg, initial, prefill, draftKey }: { cfg: Modu
         {cfg.columns && (
           <section id="items-card" className="card space-y-3 p-4 lg:col-span-2">
             <div className="flex items-center justify-between">
-              <h2 className="font-semibold text-slate-900">{cfg.itemsTitle ?? 'Items'}</h2>
+              <h2 className="font-semibold text-slate-900">{cfg.itemsTitle ?? 'Items'} <Hi t={cfg.itemsTitle ?? 'Items'} className="text-sm text-slate-500" /></h2>
               {cfg.itemsRequired && <span className="text-xs text-slate-400">At least one item</span>}
             </div>
             <Err msg={errors._items} />
-            {listId && <datalist id={listId}>{suggestionNames(cfg.suggest!).map((s) => <option key={s} value={s} />)}</datalist>}
-            {chips.length > 0 && (
-              <div className="no-scrollbar -mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
-                {chips.map((c) => <button key={c} type="button" onClick={() => addPreset(c)} className="whitespace-nowrap rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 active:bg-slate-50">+ {c}</button>)}
-              </div>
-            )}
-            <div className="space-y-3 lg:grid lg:grid-cols-2 lg:gap-3 lg:space-y-0">
-              {items.map((r, i) => (
-                <div key={i} className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="text-xs font-semibold text-slate-500">Item {i + 1}</span>
-                    <button type="button" onClick={() => { touch(); setItems((p) => (p.length > 1 ? p.filter((_, j) => j !== i) : [blankRow(cfg)])); }} className="grid h-9 w-9 place-items-center rounded-full text-red-500 active:bg-red-50" aria-label="Remove item"><Trash2 size={17} /></button>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    {cfg.columns!.map((c, ci) => {
-                      const k = `item-${i}-${c.key}`;
-                      return (
-                        <div key={c.key} className={ci === 0 || c.wide ? 'col-span-2' : ''}>
-                          <label className="label">{c.label}{c.required && <span className="text-red-500"> *</span>}</label>
-                          <CellInput id={k} c={c} value={r[c.key] ?? ''} listId={ci === 0 ? listId : undefined} error={errors[k]} onChange={(v) => setCell(i, c.key, v)} />
-                          <Err msg={errors[k]} />
-                        </div>
-                      );
-                    })}
-                  </div>
-                  {cfg.money && <p className="mt-2 text-right text-sm font-semibold text-slate-700">Amount: {inr(lineAmount(r))}</p>}
-                </div>
-              ))}
-            </div>
-            <button type="button" onClick={() => { touch(); setItems((p) => [...p, blankRow(cfg)]); }} className="btn-ghost w-full border-dashed text-brand-700"><Plus size={18} />Add item</button>
+            {listId && <datalist id={listId}>{suggestionNames(cfg.suggest!).map((x) => <option key={x} value={x} />)}</datalist>}
+            <ItemsEditor
+              cfg={cfg} items={items} entry={entry} editing={editing} entryErrors={entryErrors} errors={errors} listId={listId} chips={chips}
+              onEntry={setEntryCell} onAdd={addEntry} onEdit={editItem} onCancelEdit={cancelEdit} onRemove={removeItem} onChip={pickChip}
+            />
           </section>
         )}
 
         {m && (
           <section className="card space-y-3 p-4 lg:col-span-2">
-            <h2 className="font-semibold text-slate-900">Charges &amp; tax</h2>
+            <h2 className="section-title" style={{ borderColor: cfg.color }}>Charges &amp; tax <Hi t="Charges & tax" className="text-sm text-slate-500" /></h2>
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               <div>
                 <label className="label">Discount</label>
@@ -436,7 +430,7 @@ export default function DocForm({ cfg, initial, prefill, draftKey }: { cfg: Modu
 
         {liveCalc.lines.length > 0 && (
           <section className="card p-4 lg:col-span-2" data-err={errors._total ? '1' : undefined}>
-            <h2 className="mb-2 font-semibold text-slate-900">Summary</h2>
+            <h2 className="mb-2 font-semibold text-slate-900">Summary <Hi t="Summary" className="text-sm text-slate-500" /></h2>
             {errors._total && <p className="mb-2 rounded-lg bg-red-50 p-2 text-xs font-medium text-red-700">{errors._total}</p>}
             <dl className="space-y-1.5 rounded-xl bg-brand-50 p-3 text-sm">
               {(m ? moneyLines(m) : liveCalc.lines).map((ln, i) => (
@@ -452,16 +446,18 @@ export default function DocForm({ cfg, initial, prefill, draftKey }: { cfg: Modu
 
         {cfg.terms.length > 0 && (
           <section className="card space-y-2 p-4 lg:col-span-2">
-            <h2 className="font-semibold text-slate-900">Terms &amp; conditions</h2>
+            <h2 className="font-semibold text-slate-900">Terms &amp; conditions <Hi t="Terms & conditions" className="text-sm text-slate-500" /></h2>
             <p className="text-xs text-slate-500">One term per line. Changes here apply to this document only. Change the standard text in Settings.</p>
-            <textarea className="input" rows={5} value={data.terms ?? defaultTerms} onChange={(e) => setField('terms', e.target.value)} />
+            <AutoTextarea className="input text-sm leading-relaxed" minRows={5} maxLength={20000} value={data.terms ?? defaultTerms} onChange={(e) => setField('terms', e.target.value)} />
           </section>
         )}
       </div>
 
-      <div className="fixed inset-x-0 bottom-0 z-40 flex gap-3 border-t border-slate-200 bg-white p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] lg:left-64">
-        <button onClick={() => router.back()} className="btn-ghost flex-1 lg:flex-none lg:px-8">Cancel</button>
-        <button onClick={submit} disabled={saving} className="btn-primary flex-[2] lg:flex-none lg:px-10">{saving ? 'Saving…' : initial ? 'Save changes' : `Save ${cfg.title}`}</button>
+      {/* Save / Cancel at the end of the form (the app's bottom menu stays visible on phones) */}
+      {formError && <div role="alert" className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-700">{formError}</div>}
+      <div className="mt-4 flex gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm lg:justify-end">
+        <button onClick={() => router.back()} className="btn-ghost flex-1 flex-col gap-0 leading-tight lg:flex-none lg:px-8">Cancel <Hi t="Cancel" className="text-[11px] text-slate-500" /></button>
+        <button onClick={submit} disabled={saving} className="btn-primary flex-[2] lg:flex-none lg:px-10"><span className="flex flex-col leading-tight"><span>{saving ? 'Saving…' : initial ? 'Save changes' : `Save ${cfg.title}`}</span><Hi t="Save" className="text-[11px] text-white/90" /></span></button>
       </div>
     </div>
   );

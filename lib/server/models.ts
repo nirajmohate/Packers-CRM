@@ -54,6 +54,7 @@ const DocSchema = new Schema<any>({
 DocSchema.index({ type: 1, number: 1 }, { unique: true });
 DocSchema.index({ branchId: 1, docDate: -1 });
 DocSchema.index({ type: 1, 'data.againstId': 1 });
+DocSchema.index({ updatedAt: 1 }); // quick "what changed since" sync
 export const Doc = define('Doc', DocSchema);
 
 export const Counter = define('Counter', new Schema<any>({ _id: String, seq: { type: Number, default: 0 } }, { ...base, _id: false }));
@@ -93,3 +94,21 @@ const AuditSchema = new Schema<any>({
 AuditSchema.index({ at: -1 });
 AuditSchema.index({ entityId: 1, at: -1 });
 export const Audit = define('Audit', AuditSchema);
+
+/** A survey form link sent to a customer. Only a hash of the secret is kept, so the database alone cannot be used to open a link. */
+const SurveyLinkSchema = new Schema<any>({
+  tokenHash: { type: String, required: true, unique: true },
+  branchId: { type: String, required: true },
+  createdBy: String,
+  createdByName: String,
+  prefill: { type: M, default: {} },
+  expiresAt: { type: Date, required: true },
+  usedAt: Date,
+  docId: String,
+  docNumber: String,
+  revokedAt: Date,
+}, { ...base, timestamps: true });
+SurveyLinkSchema.index({ branchId: 1, createdAt: -1 });
+// old links are removed by MongoDB 60 days after they expire
+SurveyLinkSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 60 * 86_400 });
+export const SurveyLink = define('SurveyLink', SurveyLinkSchema);

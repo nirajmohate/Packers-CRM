@@ -74,6 +74,7 @@ export async function currentUser(req: NextRequest): Promise<SessionUser | null>
 const attempts = new Map<string, { n: number; reset: number }>();
 export function tooManyAttempts(key: string, limit = 20, windowMs = 15 * 60_000) {
   const now = Date.now();
+  if (attempts.size > 5000) for (const [k, v] of attempts) if (v.reset < now) attempts.delete(k); // keep memory small
   const a = attempts.get(key);
   if (!a || a.reset < now) { attempts.set(key, { n: 1, reset: now + windowMs }); return false; }
   a.n++;

@@ -2,10 +2,11 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { LayoutDashboard, FolderOpen, Plus, Users, Settings, Truck, Wallet, BarChart3, Trash2, UserCog, Building2, ScrollText, DatabaseBackup, LogOut, KeyRound, UserCircle2, Loader2 } from 'lucide-react';
+import { ChevronDown, Link2, List, LayoutDashboard, FolderOpen, Plus, Users, Settings, Wallet, BarChart3, Trash2, UserCog, Building2, ScrollText, DatabaseBackup, LogOut, KeyRound, UserCircle2, Loader2 } from 'lucide-react';
 import { MODULES } from '@/lib/config';
-import { boot, refresh, signOut, useBranches, useCompany, useLoadError, usePhase, useSession } from '@/lib/store';
-import { BranchSelect, ModuleIcon, Sheet } from './ui';
+import { boot, refresh, signOut, useBranches, useLoadError, usePhase, useSession } from '@/lib/store';
+import { BranchSelect, Hi, ModuleIcon, Sheet } from './ui';
+import { BRAND } from '@/lib/brand';
 
 const EXTRA = [
   { href: '/payments', label: 'Payments', Icon: Wallet },
@@ -26,10 +27,19 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const phase = usePhase();
   const loadError = useLoadError();
   const user = useSession();
-  const co = useCompany();
   const branches = useBranches();
   const [sheet, setSheet] = useState<null | 'docs' | 'create' | 'account'>(null);
-  const bare = BARE.includes(path);
+  // which document's dropdown is open in the side menu (the one you are working in opens by itself)
+  const [openMod, setOpenMod] = useState<string | null>(null);
+  useEffect(() => { const s = path.split('/'); if (s[1] === 'docs' && s[2]) setOpenMod(s[2]); }, [path]);
+  /** Already on the survey list: open the share panel there instead of navigating. */
+  const shareSurvey = (e: React.MouseEvent) => {
+    if (path !== '/docs/survey') return;
+    e.preventDefault();
+    setSheet(null);
+    window.dispatchEvent(new Event('pm-share-survey'));
+  };
+  const bare = BARE.includes(path) || path.startsWith('/s/');
   const admin = user?.role === 'admin';
 
   useEffect(() => { if (!bare) boot(); }, [bare]);
@@ -62,35 +72,57 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     return <div className="grid min-h-screen place-items-center text-slate-400"><Loader2 className="animate-spin" size={32} /></div>;
 
   const segs = path.split('/').filter(Boolean);
-  const focused = segs[0] === 'docs' && segs.length >= 3;
   const myBranch = branches.find((b) => b.id === user?.branchId)?.name;
 
   const tab = (href: string, label: string, Icon: typeof Users, active: boolean) => (
     <Link href={href} className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] font-medium ${active ? 'text-brand-700' : 'text-slate-500'}`}><Icon size={22} />{label}</Link>
   );
   const side = (href: string, label: string, Icon: typeof Users) => (
-    <Link key={href} href={href} className={`flex items-center gap-3 rounded-xl px-3 py-2.5 ${path === href ? 'bg-white font-semibold text-brand-800' : 'hover:bg-white/10'}`}><Icon size={18} />{label}</Link>
+    <Link key={href} href={href} className={`flex items-center gap-3 rounded-xl px-3 py-2.5 ${path === href ? 'bg-white font-semibold text-brand-800' : 'hover:bg-white/10'}`}>
+      <Icon size={18} /><span className="min-w-0 flex-1 leading-tight">{label}<Hi t={label} className={`block text-[11px] ${path === href ? 'text-slate-500' : 'text-white/60'}`} /></span>
+    </Link>
   );
 
   return (
     <div className="min-h-screen lg:pl-64">
       <aside className="fixed inset-y-0 left-0 hidden w-64 flex-col overflow-y-auto bg-gradient-to-b from-brand-800 to-brand-600 p-4 text-white lg:flex">
-        <Link href="/" className="mb-3 flex items-center gap-3 px-2 pt-2">
-          <span className="grid h-10 w-10 place-items-center rounded-xl bg-white/15"><Truck size={22} /></span>
-          <span className="text-base font-bold leading-tight">{co.name}<br /><span className="text-xs font-normal text-white/70">Billing &amp; CRM</span></span>
+        <Link href="/" className="mb-3 block rounded-2xl bg-white px-3 pb-2 pt-3 text-center shadow-sm" aria-label={`${BRAND.name} home`}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={BRAND.logo} alt={BRAND.name} width={200} height={124} className="mx-auto h-auto w-40" />
+          <span className="mt-1 block text-[11px] font-semibold uppercase tracking-wide text-brand-800">Billing &amp; CRM</span>
         </Link>
         <BranchSelect dark className="mb-3 px-1" />
         <nav className="flex-1 space-y-1 text-sm">
           {side('/', 'Dashboard', LayoutDashboard)}
           {side('/customers', 'Customers', Users)}
           {EXTRA.map((e) => side(e.href, e.label, e.Icon))}
-          <p className="px-3 pb-1 pt-4 text-xs text-white/60">Documents</p>
-          {MODULES.map((m) => (
-            <Link key={m.slug} href={`/docs/${m.slug}`} className={`flex items-center gap-3 rounded-xl px-3 py-2 ${segs[0] === 'docs' && segs[1] === m.slug ? 'bg-white font-semibold text-brand-800' : 'hover:bg-white/10'}`}>
-              <span className="h-2 w-2 rounded-full" style={{ background: m.color }} />{m.title}
-              {m.isNew && <span className="rounded bg-red-500 px-1 text-[9px] font-bold uppercase text-white">New</span>}
-            </Link>
-          ))}
+          <p className="px-3 pb-1 pt-4 text-xs uppercase tracking-wide text-white/60">Documents · <span lang="hi">डॉक्यूमेंट</span></p>
+          {MODULES.map((m) => {
+            const here = segs[0] === 'docs' && segs[1] === m.slug;
+            const isOpen = openMod === m.slug;
+            const sub = (href: string, label: string, Icon: typeof Users, on: boolean) => (
+              <Link href={href} onClick={href.endsWith('share=1') ? shareSurvey : undefined} className={`flex items-center gap-2 rounded-lg px-2.5 py-2 text-[13px] ${on ? 'bg-white font-semibold text-slate-900' : 'text-white/90 hover:bg-white/10'}`}>
+                <Icon size={15} style={{ color: on ? m.color : undefined }} /><span className="min-w-0 leading-tight">{label}<Hi t={label} className={`block text-[11px] ${on ? 'text-slate-500' : 'text-white/60'}`} /></span>
+              </Link>
+            );
+            return (
+              <div key={m.slug} className={`rounded-xl ${isOpen ? 'bg-white/10' : ''}`}>
+                <button type="button" onClick={() => setOpenMod(isOpen ? null : m.slug)} aria-expanded={isOpen}
+                  className={`flex w-full items-center gap-2.5 rounded-xl px-2 py-1.5 text-left ${here && !isOpen ? 'bg-white/15' : 'hover:bg-white/10'}`}>
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white"><ModuleIcon cfg={m} size={30} /></span>
+                  <span className="min-w-0 flex-1 leading-tight"><span className={`block truncate ${here ? 'font-semibold' : ''}`}>{m.title}</span><Hi t={m.title} className="block truncate text-[11px] text-white/60" /></span>
+                  <ChevronDown size={16} className={`shrink-0 transition ${isOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {isOpen && (
+                  <div className="space-y-0.5 pb-1.5 pl-6 pr-1 pt-0.5">
+                    {sub(`/docs/${m.slug}/new`, 'Add New', Plus, segs[2] === 'new' && here)}
+                    {sub(`/docs/${m.slug}`, 'Go To List', List, here && !segs[2])}
+                    {m.slug === 'survey' && sub('/docs/survey?share=1', 'Share survey link', Link2, false)}
+                  </div>
+                )}
+              </div>
+            );
+          })}
           {admin && (<><p className="px-3 pb-1 pt-4 text-xs text-white/60">Admin</p>{ADMIN.map((e) => side(e.href, e.label, e.Icon))}{side('/settings', 'Settings', Settings)}</>)}
         </nav>
         <button onClick={() => setSheet('account')} className="mt-3 flex items-center gap-3 rounded-xl bg-white/10 px-3 py-2.5 text-left text-sm hover:bg-white/20">
@@ -98,17 +130,19 @@ export default function Shell({ children }: { children: React.ReactNode }) {
         </button>
       </aside>
 
-      {!focused && (
+      {(
         <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-slate-200 bg-white/95 px-4 py-2.5 backdrop-blur lg:hidden">
-          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand-600 text-white"><Truck size={18} /></span>
-          <p className="min-w-0 flex-1 truncate text-sm font-bold text-slate-900">{co.name}</p>
+          <Link href="/" className="min-w-0 flex-1" aria-label={`${BRAND.name} home`}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={BRAND.logo} alt={BRAND.name} width={72} height={45} className="h-10 w-auto" />
+          </Link>
           <BranchSelect className="w-44 shrink-0" />
         </header>
       )}
 
-      <main className={`mx-auto max-w-6xl px-4 py-4 lg:px-8 lg:py-6 ${focused ? 'pb-28' : 'pb-28 lg:pb-10'}`}>{children}</main>
+      <main className="mx-auto max-w-6xl px-4 py-4 pb-28 lg:px-8 lg:py-6 lg:pb-10">{children}</main>
 
-      {!focused && (
+      {(
         <nav className="fixed inset-x-0 bottom-0 z-40 flex items-end border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] lg:hidden">
           {tab('/', 'Home', LayoutDashboard, path === '/')}
           <button onClick={() => setSheet('docs')} className="flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] font-medium text-slate-500"><FolderOpen size={22} />Documents</button>
@@ -122,14 +156,28 @@ export default function Shell({ children }: { children: React.ReactNode }) {
         </nav>
       )}
 
-      <Sheet open={sheet === 'docs' || sheet === 'create'} onClose={() => setSheet(null)} title={sheet === 'create' ? 'Create new' : 'Documents'}>
-        <div className="grid grid-cols-3 gap-3">
-          {MODULES.map((m) => (
-            <Link key={m.slug} href={sheet === 'create' ? `/docs/${m.slug}/new` : `/docs/${m.slug}`} className="flex flex-col items-center gap-2 rounded-2xl border border-slate-200 p-3 text-center active:bg-slate-50">
-              <ModuleIcon cfg={m} /><span className="text-xs font-medium leading-tight text-slate-700">{m.title}</span>
-            </Link>
-          ))}
-        </div>
+      <Sheet open={sheet === 'docs' || sheet === 'create'} onClose={() => setSheet(null)} title={sheet === 'create' ? 'Create new · नया बनाएं' : 'Documents · डॉक्यूमेंट'}>
+        {sheet === 'create' ? (
+          <div className="grid grid-cols-3 gap-3">
+            {MODULES.map((m) => (
+              <Link key={m.slug} href={`/docs/${m.slug}/new`} className="flex flex-col items-center gap-1.5 rounded-2xl border-2 p-3 text-center active:bg-slate-50" style={{ borderColor: m.color + '55' }}>
+                <ModuleIcon cfg={m} /><span className="text-xs font-semibold leading-tight text-slate-800">{m.title}</span><Hi t={m.title} className="text-[11px] text-slate-500" />
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <ul className="space-y-2">
+            {MODULES.map((m) => (
+              <li key={m.slug} className="flex items-center gap-3 rounded-2xl border-2 p-2" style={{ borderColor: m.color + '40' }}>
+                <ModuleIcon cfg={m} size={40} />
+                <span className="min-w-0 flex-1 leading-tight"><span className="block truncate text-sm font-semibold text-slate-900">{m.title}</span><Hi t={m.title} className="block text-[11px] text-slate-500" /></span>
+                <Link href={`/docs/${m.slug}/new`} className="btn min-h-[38px] px-3 text-xs text-white" style={{ background: m.color }}><Plus size={15} />New</Link>
+                <Link href={`/docs/${m.slug}`} className="btn min-h-[38px] border-2 bg-white px-3 text-xs" style={{ borderColor: m.color, color: m.color }}><List size={15} />List</Link>
+                {m.slug === 'survey' && <Link href="/docs/survey?share=1" onClick={shareSurvey} aria-label="Share survey link" className="btn min-h-[38px] bg-violet-600 px-2.5 text-xs text-white"><Link2 size={15} />Link</Link>}
+              </li>
+            ))}
+          </ul>
+        )}
         {sheet === 'docs' && (
           <div className="mt-4 grid grid-cols-2 gap-3 border-t border-slate-100 pt-4">
             {[{ href: '/customers', label: 'Customers', Icon: Users }, ...EXTRA, ...(admin ? ADMIN : [])].map(({ href, label, Icon }) => (

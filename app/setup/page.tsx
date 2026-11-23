@@ -1,7 +1,8 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2, Truck } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
+import { BRAND } from '@/lib/brand';
 import { api, ApiFail } from '@/lib/api';
 
 export default function Setup() {
@@ -28,7 +29,8 @@ export default function Setup() {
     <div className="grid min-h-screen place-items-center bg-gradient-to-br from-brand-700 to-sky-400 p-4">
       <form onSubmit={submit} className="card w-full max-w-md space-y-4 p-6">
         <div className="flex items-center gap-3">
-          <span className="grid h-12 w-12 place-items-center rounded-2xl bg-brand-600 text-white"><Truck size={24} /></span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={BRAND.logo} alt={BRAND.name} width={96} height={60} className="h-auto w-24 shrink-0" />
           <div><p className="text-lg font-bold text-slate-900">First-time setup</p><p className="text-xs text-slate-500">Create the admin account. This page works only once.</p></div>
         </div>
         {field('name', 'Your name')}

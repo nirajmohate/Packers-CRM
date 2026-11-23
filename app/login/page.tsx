@@ -1,7 +1,8 @@
 'use client';
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Loader2, Truck } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
+import { BRAND } from '@/lib/brand';
 import { api, ApiFail } from '@/lib/api';
 import { boot } from '@/lib/store';
 
@@ -33,9 +34,11 @@ function Form() {
   return (
     <div className="grid min-h-screen place-items-center bg-gradient-to-br from-brand-700 to-sky-400 p-4">
       <form onSubmit={submit} className="card w-full max-w-sm space-y-4 p-6">
-        <div className="flex items-center gap-3">
-          <span className="grid h-12 w-12 place-items-center rounded-2xl bg-brand-600 text-white"><Truck size={24} /></span>
-          <div><p className="text-lg font-bold text-slate-900">Packers &amp; Movers CRM</p><p className="text-xs text-slate-500">Sign in to continue</p></div>
+        <div className="text-center">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={BRAND.logo} alt={BRAND.name} width={220} height={137} className="mx-auto h-auto w-52" />
+          <p className="mt-2 text-sm font-semibold text-slate-700">Billing &amp; CRM</p>
+          <p className="text-xs text-slate-500">Sign in to continue</p>
         </div>
         <div><label className="label" htmlFor="loginId">Login ID</label>
           <input id="loginId" className="input" autoComplete="username" autoCapitalize="none" value={loginId} onChange={(e) => setLoginId(e.target.value)} required /></div>

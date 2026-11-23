@@ -12,7 +12,7 @@ const M = 12;
 const clean = (t: string) => t.replace(/₹/g, 'Rs.');
 
 export interface PdfOpts { stamp: boolean; qr: boolean; watermark: boolean }
-export interface PdfImages { logo?: string; stamp?: string; signature?: string }
+export interface PdfImages { logo?: string; logoRatio?: number; stamp?: string; signature?: string }
 export interface PdfCtx { company: Company; images: PdfImages; branch?: Branch; docs: DocRecord[]; terms: string[]; opts: PdfOpts }
 
 function fieldValue(f: Field, v: string) {
@@ -37,8 +37,9 @@ export async function buildPdf(rec: DocRecord, cfg: ModuleConfig, ctx: PdfCtx) {
   let tx = M;
   if (images.logo) {
     try {
-      const h = 18;
-      const w = Math.min(h * (co.logoRatio || 1), 40);
+      const ratio = images.logoRatio || co.logoRatio || 1;
+      const w = Math.min(18 * ratio, 40);
+      const h = w / ratio; // keep the logo's shape when it is wider than the space
       pdf.addImage(images.logo, 'PNG', M, y, w, h);
       tx = M + w + 4;
     } catch { /* ignore a bad logo */ }
@@ -188,7 +189,7 @@ export async function buildPdf(rec: DocRecord, cfg: ModuleConfig, ctx: PdfCtx) {
   }
 
   /* ----- amounts, with bank details and UPI QR in the free column on the left ----- */
-  const totalLabel = cfg.slug === 'receipt' ? 'Amount received' : cfg.slug === 'voucher' ? 'Amount paid' : 'Total';
+  const totalLabel = cfg.slug === 'receipt' ? 'Amount received' : 'Total';
   const amountLines = calc.lines.length ? calc.lines : calc.total > 0 ? [{ label: totalLabel, value: calc.total, bold: true }] : [];
   let qrAmount = 0;
   if (m) {

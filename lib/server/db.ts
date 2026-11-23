@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 import { mongoUri } from './env';
-import { Asset, Audit, Branch, Counter, Doc, Settings, User } from './models';
+import { Asset, Audit, Branch, Counter, Doc, Settings, SurveyLink, User } from './models';
 
 const g = globalThis as unknown as { __pmMongo?: { promise: Promise<typeof mongoose> | null } };
 g.__pmMongo ??= { promise: null };
@@ -12,7 +12,7 @@ export async function connectDb() {
     .connect(mongoUri(), { serverSelectionTimeoutMS: 8000, maxPoolSize: 10 })
     .then(async (m) => {
       // make sure the unique indexes exist before the first write
-      await Promise.all([Asset, Audit, Branch, Counter, Doc, Settings, User].map((x) => x.init()));
+      await Promise.all([Asset, Audit, Branch, Counter, Doc, Settings, SurveyLink, User].map((x) => x.init()));
       return m;
     })
     .catch((e) => { state.promise = null; throw e; });

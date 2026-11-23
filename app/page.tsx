@@ -1,21 +1,51 @@
 'use client';
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
-import { Check, Plus, Truck, X } from 'lucide-react';
+import { Check, Plus, Sun, X } from 'lucide-react';
+import HeroArt from '@/components/HeroArt';
 import { BY_SLUG, MODULES } from '@/lib/config';
 import { billInfo, docCalc } from '@/lib/ledger';
 import { num, round2 } from '@/lib/calc';
 import { fmtDate, inr, inrShort, monthLabel } from '@/lib/format';
-import { setDocStatus, useCompany, useDocs, useHomeState, useHydrated, useLiveDocs } from '@/lib/store';
-import { ModuleIcon, Sheet, StatusBadge } from '@/components/ui';
+import { ApiFail, setDocStatus, useActiveBranch, useBranches, useDocs, useHomeState, useHydrated, useLiveDocs } from '@/lib/store';
+import { Hi, ModuleIcon, Sheet, StatusBadge, Toast, useConfirm } from '@/components/ui';
+import type { DocRecord } from '@/lib/types';
 
 export default function Dashboard() {
   const docs = useDocs();
   const live = useLiveDocs();
-  const co = useCompany();
+  const [activeBranch] = useActiveBranch();
+  const branchList = useBranches();
   const home = useHomeState();
   const ready = useHydrated();
   const [create, setCreate] = useState(false);
+  const [ask, confirmDialog] = useConfirm();
+  const [busyId, setBusyId] = useState('');
+  const [toast, setToast] = useState('');
+  const say = (m: string) => { setToast(m); setTimeout(() => setToast(''), 3500); };
+
+  /** Approve or reject a quotation, only after the user confirms in the popup. */
+  const decide = async (d: DocRecord, to: 'Approved' | 'Rejected') => {
+    if (busyId) return;
+    const approve = to === 'Approved';
+    const amount = inr(docCalc(d, BY_SLUG.quotation, live, home(d.branchId)).total);
+    const ok = await ask({
+      tone: approve ? 'green' : 'red',
+      title: approve ? 'Approve this quotation?' : 'Reject this quotation?',
+      message: (
+        <>
+          <p>Quotation <b className="text-slate-900">{d.number}</b> for <b className="text-slate-900">{d.data.customerName || 'this customer'}</b> ({amount}) will change from <b>Pending</b> to <b className={approve ? 'text-emerald-700' : 'text-red-600'}>{to}</b>.</p>
+          <p className="mt-2 text-xs text-slate-500">You can change it again later from the quotation page. The change is saved in its history.</p>
+        </>
+      ),
+      confirmLabel: approve ? 'Yes, approve' : 'Yes, reject',
+    });
+    if (!ok) return;
+    setBusyId(d.id);
+    try { await setDocStatus(d.id, to); say(`${d.number} marked ${to}`); }
+    catch (e) { say(e instanceof ApiFail ? e.message : 'Could not change the status. Please try again.'); }
+    finally { setBusyId(''); }
+  };
 
   const s = useMemo(() => {
     const bills = docs.filter((d) => d.type === 'bill' && d.status !== 'Cancelled').map((b) => ({ b, i: billInfo(b, live, home(b.branchId)) }));
@@ -27,8 +57,8 @@ export default function Dashboard() {
   }, [docs, live, home]);
   const count = (t: string) => docs.filter((d) => d.type === t).length;
 
-  const hour = ready ? new Date().getHours() : 9;
-  const greet = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  // "Hello, <branch>!" : the branch you are working in, or all branches for the admin
+  const branchName = activeBranch === 'all' ? 'All branches' : branchList.find((b) => b.id === activeBranch)?.name ?? 'Branch';
 
   const now = new Date();
   const months = Array.from({ length: 6 }, (_, i) => {
@@ -43,27 +73,37 @@ export default function Dashboard() {
   const recent = [...docs].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 6);
 
   const stats = [
-    { label: 'Quotations', value: String(count('quotation')), color: 'text-brand-700', href: '/docs/quotation' },
-    { label: 'Bills', value: String(count('bill')), color: 'text-sky-700', href: '/docs/bill' },
-    { label: 'Received', value: inrShort(s.received), color: 'text-emerald-700', href: '/reports' },
-    { label: 'Pending', value: inrShort(s.pending), color: 'text-amber-700', href: '/payments' },
-    { label: 'Customers', value: String(s.customers), color: 'text-violet-700', href: '/customers' },
+    { label: 'Quotations', hi: 'कोटेशन', value: String(count('quotation')), bg: 'from-blue-600 to-blue-400', href: '/docs/quotation' },
+    { label: 'Bills', hi: 'बिल', value: String(count('bill')), bg: 'from-green-600 to-emerald-400', href: '/docs/bill' },
+    { label: 'Received', hi: 'मिला', value: inrShort(s.received), bg: 'from-teal-600 to-cyan-400', href: '/reports' },
+    { label: 'Pending', hi: 'बाकी', value: inrShort(s.pending), bg: 'from-amber-500 to-orange-400', href: '/payments' },
+    { label: 'Customers', hi: 'ग्राहक', value: String(s.customers), bg: 'from-violet-600 to-fuchsia-400', href: '/customers' },
   ];
 
   return (
     <div className="space-y-5">
-      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-brand-700 to-sky-400 p-5 text-white">
-        <Truck className="absolute -right-4 -top-2 text-white/15" size={140} strokeWidth={1.2} />
-        <p className="relative text-xl font-bold">{greet}{co.contactPerson ? `, ${co.contactPerson}` : ''}!</p>
-        <p className="relative mt-1 max-w-xs text-sm text-white/90">Create quotations, bills and LRs, and share the PDF with your customer.</p>
-        <button onClick={() => setCreate(true)} className="btn relative mt-4 bg-white text-brand-700"><Plus size={18} />Create new</button>
+      <section className="overflow-hidden rounded-3xl border border-sky-200 bg-gradient-to-br from-sky-100 via-blue-50 to-sky-200 shadow-sm sm:flex sm:items-stretch">
+        <div className="flex flex-col justify-center p-5 sm:w-[46%] sm:shrink-0 lg:p-7">
+          <div className="flex items-start gap-3">
+            <span className="relative mt-0.5 grid h-11 w-11 shrink-0 place-items-center"><Sun className="text-amber-400" size={40} fill="#fcd34d" strokeWidth={1.5} /></span>
+            <div className="min-w-0">
+              <p className="break-words text-2xl font-extrabold leading-tight text-slate-900 lg:text-3xl">Hello, {branchName}!</p>
+              <p lang="hi" className="text-sm text-slate-500">नमस्ते, {branchName}!</p>
+            </div>
+          </div>
+          <p className="mt-2 text-sm text-slate-600">Manage your shifting, create documents and track payments easily.</p>
+          <div><button onClick={() => setCreate(true)} className="btn-primary mt-4"><Plus size={18} />Create new <span lang="hi" className="font-normal">· नया बनाएं</span></button></div>
+        </div>
+        <div className="flex items-end sm:flex-1">
+          <HeroArt className="block h-auto w-full" />
+        </div>
       </section>
 
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {stats.map((x, i) => (
-          <Link key={x.label} href={x.href} className={`card p-3.5 active:bg-slate-50 ${i === 4 ? 'col-span-2 sm:col-span-1' : ''}`}>
-            <p className="text-xs text-slate-500">{x.label}</p>
-            <p className={`mt-1 text-2xl font-bold ${x.color}`}>{x.value}</p>
+          <Link key={x.label} href={x.href} className={`rounded-2xl bg-gradient-to-br p-3.5 text-white shadow-sm active:opacity-90 ${x.bg} ${i === 4 ? 'col-span-2 sm:col-span-1' : ''}`}>
+            <p className="text-xs font-semibold text-white/90">{x.label} <span lang="hi" className="font-normal">· {x.hi}</span></p>
+            <p className="mt-1 text-2xl font-bold">{x.value}</p>
           </Link>
         ))}
       </section>
@@ -77,12 +117,13 @@ export default function Dashboard() {
       )}
 
       <section>
-        <h2 className="mb-2 font-semibold text-slate-900">Quick actions</h2>
+        <h2 className="mb-2 font-semibold text-slate-900">Quick actions <Hi t="Quick actions" className="text-sm text-slate-500" /></h2>
         <div className="grid grid-cols-3 gap-3 sm:grid-cols-5 lg:grid-cols-7">
           {MODULES.map((m) => (
-            <Link key={m.slug} href={`/docs/${m.slug}/new`} className="card flex flex-col items-center gap-2 p-3 text-center active:bg-slate-50">
+            <Link key={m.slug} href={`/docs/${m.slug}/new`} className="card flex flex-col items-center gap-1.5 border-b-4 p-3 text-center active:bg-slate-50" style={{ borderBottomColor: m.color }}>
               <ModuleIcon cfg={m} size={40} />
-              <span className="text-xs font-medium leading-tight text-slate-700">{m.title}</span>
+              <span className="text-xs font-semibold leading-tight text-slate-800">{m.title}</span>
+              <Hi t={m.title} className="text-[11px] leading-tight text-slate-500" />
             </Link>
           ))}
         </div>
@@ -91,7 +132,8 @@ export default function Dashboard() {
       <div className="grid gap-5 lg:grid-cols-2">
         {pendingQ.length > 0 && (
           <section className="card p-4">
-            <h2 className="mb-2 font-semibold text-slate-900">Pending approvals</h2>
+            <h2 className="font-semibold text-slate-900">Quotations waiting for approval</h2>
+            <p className="mb-2 text-xs text-slate-500">Tap ✓ to approve or ✕ to reject. You will be asked to confirm first.</p>
             <ul className="divide-y divide-slate-100">
               {pendingQ.map((d) => (
                 <li key={d.id} className="flex items-center gap-3 py-2.5">
@@ -99,8 +141,8 @@ export default function Dashboard() {
                     <p className="truncate text-sm font-semibold text-slate-900">{d.number} · {d.data.customerName}</p>
                     <p className="text-xs text-slate-500">{inr(docCalc(d, BY_SLUG.quotation, live, home(d.branchId)).total)}</p>
                   </Link>
-                  <button aria-label="Approve" onClick={() => setDocStatus(d.id, 'Approved')} className="grid h-10 w-10 place-items-center rounded-full bg-emerald-50 text-emerald-600"><Check size={18} /></button>
-                  <button aria-label="Reject" onClick={() => setDocStatus(d.id, 'Rejected')} className="grid h-10 w-10 place-items-center rounded-full bg-red-50 text-red-500"><X size={18} /></button>
+                  <button aria-label="Approve" title="Approve" disabled={!!busyId} onClick={() => decide(d, 'Approved')} className="grid h-10 w-10 place-items-center rounded-full bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200 disabled:opacity-50"><Check size={18} /></button>
+                  <button aria-label="Reject" title="Reject" disabled={!!busyId} onClick={() => decide(d, 'Rejected')} className="grid h-10 w-10 place-items-center rounded-full bg-red-50 text-red-500 ring-1 ring-red-200 disabled:opacity-50"><X size={18} /></button>
                 </li>
               ))}
             </ul>
@@ -123,7 +165,7 @@ export default function Dashboard() {
 
       {recent.length > 0 && (
         <section className="card p-4">
-          <h2 className="mb-2 font-semibold text-slate-900">Recent documents</h2>
+          <h2 className="mb-2 font-semibold text-slate-900">Recent documents <Hi t="Recent documents" className="text-sm text-slate-500" /></h2>
           <ul className="divide-y divide-slate-100">
             {recent.map((d) => {
               const cfg = BY_SLUG[d.type];
@@ -154,6 +196,8 @@ export default function Dashboard() {
           ))}
         </div>
       </Sheet>
+      {confirmDialog}
+      <Toast msg={toast} />
     </div>
   );
 }

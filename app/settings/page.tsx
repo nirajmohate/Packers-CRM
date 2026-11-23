@@ -211,7 +211,7 @@ export default function Settings() {
       <section className="card space-y-3 p-4">
         <h2 className="font-semibold text-slate-900">Terms &amp; conditions{isGlobal ? '' : ` for ${sampleBranch ? branches.find((b) => b.id === scope)?.name : 'this branch'}`}</h2>
         <p className="text-xs text-slate-500">One term per line. {isGlobal ? 'Used for every branch unless a branch has its own.' : termsOverridden ? 'This branch has its own text for this document.' : 'Using the company text. Edit to give this branch its own.'}</p>
-        <select className="input" value={termSlug} onChange={(e) => setTermSlug(e.target.value)}>{MODULES.filter((m) => m.terms.length || m.slug === 'voucher').map((m) => <option key={m.slug} value={m.slug}>{m.title}</option>)}</select>
+        <select className="input" value={termSlug} onChange={(e) => setTermSlug(e.target.value)}>{MODULES.filter((m) => m.terms.length).map((m) => <option key={m.slug} value={m.slug}>{m.title}</option>)}</select>
         <textarea className="input" rows={6} value={shownTerms} onChange={(e) => setTerms({ ...terms, [termSlug]: e.target.value })} />
         <button className="btn-ghost min-h-[38px] text-xs" onClick={() => setTerms({ ...terms, [termSlug]: isGlobal ? termMod.terms.join('\n') : inheritedTerms(termSlug) })}>{isGlobal ? 'Reset to built-in text' : 'Use the company text'}</button>
       </section>

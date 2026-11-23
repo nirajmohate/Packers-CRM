@@ -9,7 +9,8 @@ import { fmtDate, inr, todayISO } from '@/lib/format';
 import { fyOf } from '@/lib/numbering';
 import { docRows, exportSheets, type Sheet as XSheet } from '@/lib/export';
 import { ensureSince, useBranches, useDocs, useHomeState, useLiveDocs } from '@/lib/store';
-import { StatusBadge, Sheet } from '@/components/ui';
+import { Hi, StatusBadge, Sheet } from '@/components/ui';
+import { LoadCounter, LoadMore, useInfinite } from '@/components/Infinite';
 
 const PERIODS = ['This month', 'Last month', 'This financial year', 'Last financial year', 'All time', 'Custom'] as const;
 type Period = (typeof PERIODS)[number];
@@ -56,8 +57,6 @@ export default function Reports() {
     const pending = round2(active.reduce((a, x) => a + x.i.calc.balance, 0));
     const receipts = docs.filter((d) => d.type === 'receipt' && inRange(d.docDate) && cust(d));
     const received = round2(receipts.reduce((a, d) => a + num(d.data.amount), 0));
-    const vouchers = docs.filter((d) => d.type === 'voucher' && inRange(d.docDate));
-    const expenses = round2(vouchers.reduce((a, d) => a + num(d.data.amount), 0));
     const quotes = docs.filter((d) => d.type === 'quotation' && inRange(d.docDate) && cust(d));
     const approved = quotes.filter((d) => d.status === 'Approved').length;
 
@@ -69,9 +68,12 @@ export default function Reports() {
       byCust.set(k, c);
     });
     const shown = bills.filter((x) => status === 'All' || x.i.status === status).sort((a, b) => b.b.docDate.localeCompare(a.b.docDate));
-    return { customers, shown, billed, taxable, gst, pending, received, expenses, quotes, approved, byCust: [...byCust.values()].sort((a, b) => b.pending - a.pending), receipts, vouchers };
+    return { customers, shown, billed, taxable, gst, pending, received, quotes, approved, byCust: [...byCust.values()].sort((a, b) => b.pending - a.pending), receipts };
   }, [docs, live, home, lo, hi, customer, status]);
 
+  const key = [lo, hi, customer, status].join('|');
+  const [shownC, sentinelC, moreC] = useInfinite(r.byCust.length, key);
+  const [shownB, sentinelB, moreB] = useInfinite(r.shown.length, key);
   const exportNow = async (f: 'xlsx' | 'csv') => {
     setMenu(false);
     const bills = r.shown.map((x) => x.b);
@@ -79,7 +81,6 @@ export default function Reports() {
       { name: 'Bills', rows: docRows(BY_SLUG.bill, bills, live, branches, home) },
       { name: 'Customers', rows: [['Customer', 'Bills', 'Billed', 'Received', 'Pending'], ...r.byCust.map((c) => [c.name, c.count, c.billed, c.paid, c.pending])] },
       { name: 'Receipts', rows: docRows(BY_SLUG.receipt, r.receipts, live, branches, home) },
-      { name: 'Vouchers', rows: docRows(BY_SLUG.voucher, r.vouchers, live, branches, home) },
     ];
     await exportSheets(sheets, `report-${todayISO()}`, f);
   };
@@ -87,13 +88,13 @@ export default function Reports() {
   const cards = [
     { l: 'Billed', v: inr(r.billed), c: 'text-brand-700' }, { l: 'GST collected', v: inr(r.gst), c: 'text-violet-700' },
     { l: 'Received', v: inr(r.received), c: 'text-emerald-700' }, { l: 'Pending', v: inr(r.pending), c: 'text-amber-700' },
-    { l: 'Expenses (vouchers)', v: inr(r.expenses), c: 'text-rose-700' }, { l: `Quotations (${r.approved} approved)`, v: String(r.quotes.length), c: 'text-sky-700' },
+    { l: `Quotations (${r.approved} approved)`, v: String(r.quotes.length), c: 'text-sky-700' },
   ];
 
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <div className="flex-1"><h1 className="text-xl font-bold text-slate-900">Reports</h1><p className="text-xs text-slate-500">{lo === '0000-01-01' ? 'All time' : `${fmtDate(lo)} to ${fmtDate(hi)}`}</p></div>
+        <div className="flex-1"><h1 className="text-xl font-bold text-slate-900">Reports <Hi t="Reports" className="text-base text-slate-500" /></h1><p className="text-xs text-slate-500">{lo === '0000-01-01' ? 'All time' : `${fmtDate(lo)} to ${fmtDate(hi)}`}</p></div>
         <button className="btn-primary" onClick={() => setMenu(true)}><Download size={17} />Export</button>
       </div>
 
@@ -111,7 +112,7 @@ export default function Reports() {
       </section>
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-        {cards.map((c) => <div key={c.l} className="card p-3.5"><p className="text-xs text-slate-500">{c.l}</p><p className={`mt-1 text-xl font-bold ${c.c}`}>{c.v}</p></div>)}
+        {cards.map((c) => <div key={c.l} className="card border-l-4 border-l-brand-500 p-3.5"><p className="text-xs text-slate-500">{c.l}</p><p className={`mt-1 text-xl font-bold ${c.c}`}>{c.v}</p></div>)}
       </section>
       <p className="px-1 text-xs text-slate-500">Taxable value of bills: {inr(r.taxable)}. Cancelled bills are left out of the totals.</p>
 
@@ -119,7 +120,7 @@ export default function Reports() {
         <h2 className="mb-2 font-semibold text-slate-900">Customer-wise outstanding</h2>
         {r.byCust.length === 0 ? <p className="text-sm text-slate-500">No bills in this period.</p> : (
           <ul className="divide-y divide-slate-100 text-sm">
-            {r.byCust.map((c) => (
+            {r.byCust.slice(0, shownC).map((c) => (
               <li key={c.name} className="flex items-center justify-between gap-3 py-2.5">
                 <span className="min-w-0"><span className="block truncate font-medium text-slate-900">{c.name}</span><span className="text-xs text-slate-500">{c.count} bills · billed {inr(c.billed)} · paid {inr(c.paid)}</span></span>
                 <span className={`font-bold ${c.pending > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>{inr(c.pending)}</span>
@@ -127,21 +128,34 @@ export default function Reports() {
             ))}
           </ul>
         )}
+        {r.byCust.length > 0 && <LoadMore shown={shownC} total={r.byCust.length} sentinel={sentinelC} more={moreC} />}
       </section>
 
       <section className="card p-4">
         <h2 className="mb-2 font-semibold text-slate-900">Bills ({r.shown.length})</h2>
         {r.shown.length === 0 ? <p className="text-sm text-slate-500">Nothing to show.</p> : (
-          <ul className="divide-y divide-slate-100">
-            {r.shown.map(({ b, i }) => (
-              <li key={b.id}>
-                <Link href={`/docs/bill/view?id=${b.id}`} className="flex items-center justify-between gap-3 py-2.5 text-sm">
-                  <span className="min-w-0"><span className="block truncate font-medium text-slate-900">{b.data.customerName}</span><span className="text-xs text-slate-500">{b.number} · {fmtDate(b.docDate)}</span></span>
-                  <span className="flex flex-col items-end gap-1"><span className="font-semibold">{inr(i.calc.total)}</span><StatusBadge status={i.status} /></span>
-                </Link>
-              </li>
-            ))}
-          </ul>
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[600px] text-left text-sm">
+                <thead><tr className="bg-green-600 text-xs uppercase tracking-wide text-white">
+                  <th className="w-10 px-3 py-2">#</th><th className="px-3 py-2">Bill</th><th className="px-3 py-2">Customer</th><th className="px-3 py-2 text-right">Total</th><th className="px-3 py-2">Status</th>
+                </tr></thead>
+                <tbody className="divide-y divide-slate-200">
+                  {r.shown.slice(0, shownB).map(({ b, i }, n) => (
+                    <tr key={b.id} className={n % 2 ? 'bg-slate-50/80' : 'bg-white'}>
+                      <td className="px-3 py-2 font-semibold text-slate-500">{n + 1}.</td>
+                      <td className="px-3 py-2"><Link href={`/docs/bill/view?id=${b.id}`} className="block whitespace-nowrap font-bold text-green-700 hover:underline">{b.number}</Link><span className="text-xs font-semibold text-orange-600">{fmtDate(b.docDate)}</span></td>
+                      <td className="max-w-[220px] truncate px-3 py-2 font-semibold uppercase text-fuchsia-700">{b.data.customerName}</td>
+                      <td className="whitespace-nowrap px-3 py-2 text-right font-bold">{inr(i.calc.total)}</td>
+                      <td className="px-3 py-2"><StatusBadge status={i.status} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <LoadMore shown={shownB} total={r.shown.length} sentinel={sentinelB} more={moreB} />
+            <LoadCounter shown={shownB} total={r.shown.length} />
+          </>
         )}
       </section>
 
@@ -150,7 +164,7 @@ export default function Reports() {
           <button className="btn-primary" onClick={() => exportNow('xlsx')}>Excel with all sheets (.xlsx)</button>
           <button className="btn-ghost" onClick={() => exportNow('csv')}>Bills only (CSV)</button>
         </div>
-        <p className="mt-3 text-xs text-slate-500">Excel has four sheets: Bills (with CGST, SGST, IGST), Customers, Receipts and Vouchers.</p>
+        <p className="mt-3 text-xs text-slate-500">Excel has three sheets: Bills (with CGST, SGST, IGST), Customers and Receipts.</p>
       </Sheet>
     </div>
   );

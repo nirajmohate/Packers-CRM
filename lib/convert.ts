@@ -44,7 +44,6 @@ export function prefillFrom(src: DocRecord, srcCfg: ModuleConfig, target: Module
     data.purpose = `Payment against ${srcCfg.title} ${src.number}`;
   }
   if (target.slug === 'fov') data.remarks = `Linked to ${srcCfg.title} ${src.number}`;
-  if (target.slug === 'lr' || target.slug === 'loading') data.lrNo = target.slug === 'loading' && src.type === 'lr' ? src.number : data.lrNo ?? '';
   for (const k of Object.keys(data)) if (data[k] === '') delete data[k];
   for (const f of fields.values()) if (!isVisible(f, data)) delete data[f.key];
   return { data, items };

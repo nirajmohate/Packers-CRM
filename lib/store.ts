@@ -13,13 +13,14 @@ interface State {
   user: SessionUser | null;
   docs: DocRecord[];
   since: string;
+  syncAt: string; // server time of the last sync, used to ask only for what changed
   trash: DocRecord[] | null;
   branches: Branch[];
   settings: SettingsBundle | null;
   branchFilter: string; // admin's header choice: "all" or a branch id
 }
 
-const EMPTY: State = { phase: 'boot', error: '', user: null, docs: [], since: '', trash: null, branches: [], settings: null, branchFilter: 'all' };
+const EMPTY: State = { phase: 'boot', error: '', user: null, docs: [], since: '', syncAt: '', trash: null, branches: [], settings: null, branchFilter: 'all' };
 let state: State = EMPTY;
 const listeners = new Set<() => void>();
 const subscribe = (cb: () => void) => { listeners.add(cb); return () => { listeners.delete(cb); }; };
@@ -31,7 +32,24 @@ let inflight: Promise<void> | null = null;
 let writing = 0;
 const FILTER_KEY = 'pm_branch_filter';
 
-interface Bootstrap { user: SessionUser; branches?: Branch[]; settings?: SettingsBundle; docs?: DocRecord[]; since?: string }
+interface Bootstrap { user: SessionUser; branches?: Branch[]; settings?: SettingsBundle; docs?: DocRecord[]; since?: string; syncAt?: string }
+interface Changes { full: boolean; user?: SessionUser; docs?: DocRecord[]; removed?: string[]; branches?: Branch[]; settings?: SettingsBundle; syncAt?: string }
+const FULL_RELOAD_MS = 15 * 60_000; // a complete reload now and then, as a safety net
+let lastFull = 0;
+
+/** Newer copy wins, so a slow sync can never undo a save made on this device a moment ago. */
+function mergeDocs(cur: DocRecord[], incoming: DocRecord[], removed: string[]) {
+  if (!incoming.length && !removed.length) return cur;
+  const gone = new Set(removed);
+  const byId = new Map(cur.map((d) => [d.id, d]));
+  for (const d of incoming) {
+    const old = byId.get(d.id);
+    if (!old || (d.updatedAt ?? '') >= (old.updatedAt ?? '')) byId.set(d.id, d);
+  }
+  const had = new Set(cur.map((d) => d.id));
+  const fresh = incoming.filter((d) => !had.has(d.id) && !gone.has(d.id));
+  return [...fresh, ...cur.filter((d) => !gone.has(d.id)).map((d) => byId.get(d.id) ?? d)];
+}
 
 export async function boot() {
   if (inflight) return inflight;
@@ -44,7 +62,8 @@ export async function boot() {
       const branches = r.branches ?? [];
       if (filter !== 'all' && !branches.some((b) => b.id === filter)) filter = 'all';
       // keep the trash cache only if it was loaded before
-      set({ phase: 'ready', error: '', user: r.user, docs: r.docs ?? [], since: r.since ?? state.since, branches, settings: r.settings ?? null, branchFilter: r.user.role === 'admin' ? filter : 'all' });
+      lastFull = Date.now();
+      set({ phase: 'ready', error: '', user: r.user, docs: r.docs ?? [], since: r.since ?? state.since, syncAt: r.syncAt ?? '', branches, settings: r.settings ?? null, branchFilter: r.user.role === 'admin' ? filter : 'all' });
     } catch (e) {
       if (e instanceof ApiFail && e.status === 401) set({ phase: 'anon', user: null });
       else if (state.phase === 'boot') set({ phase: 'error', error: e instanceof Error ? e.message : 'Could not load' });
@@ -54,10 +73,29 @@ export async function boot() {
   return inflight;
 }
 
-/** Pulls the latest data (other people may have saved documents). Skipped while this device is saving. */
+/**
+ * Pulls the latest data (other people may have saved documents). Skipped while this device is saving.
+ * Normally downloads only the documents that changed since the last sync; `force` (or every 15 minutes) reloads everything.
+ */
 export async function refresh(force = false) {
   if (state.phase !== 'ready' || (writing > 0 && !force)) return;
-  await boot();
+  if (force || !state.syncAt || Date.now() - lastFull > FULL_RELOAD_MS) { await boot(); return; }
+  if (inflight) return inflight;
+  inflight = (async () => {
+    try {
+      const r = await api<Changes>(`/api/docs/changes?after=${encodeURIComponent(state.syncAt)}`);
+      if (r.full || !r.user || !r.syncAt) { inflight = null; await boot(); return; }
+      if (r.user.mustChangePassword) { set({ user: r.user, phase: 'mustchange' }); return; }
+      const branches = r.branches ?? state.branches;
+      let filter = state.branchFilter;
+      if (filter !== 'all' && !branches.some((b) => b.id === filter)) filter = 'all';
+      set({ user: r.user, docs: mergeDocs(state.docs, r.docs ?? [], r.removed ?? []), syncAt: r.syncAt, branches, settings: r.settings ?? state.settings, branchFilter: filter });
+    } catch (e) {
+      if (e instanceof ApiFail && e.status === 401) set({ phase: 'anon', user: null });
+      // any other failed background sync keeps the screen as it is and tries again next time
+    } finally { inflight = null; }
+  })();
+  return inflight;
 }
 
 export async function ensureSince(date: string) {
@@ -89,6 +127,8 @@ export const useLoadError = () => useSel((s) => s.error);
 export const useSession = () => useSel((s) => s.user);
 export const useHydrated = () => useSel((s) => s.phase === 'ready');
 export const useAllDocs = () => useSel((s) => s.docs);
+/** Earliest document date loaded so far (older ones are fetched on demand). */
+export const useSince = () => useSel((s) => s.since);
 export const useLiveDocs = useAllDocs;
 export const useTrash = () => useSel((s) => s.trash);
 export const useBranches = () => useSel((s) => s.branches);

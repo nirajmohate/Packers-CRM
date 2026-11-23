@@ -65,7 +65,7 @@ const nonCash = { key: 'paymentMode', notIn: ['', 'Cash'] };
 
 const l = (label: string, value: number, bold = false): CalcLine => ({ label, value, bold });
 
-/* ---------- the fourteen modules ---------- */
+/* ---------- the nine document types in use ---------- */
 export const MODULES: ModuleConfig[] = [
   {
     slug: 'quotation', title: 'Quotation', short: 'QTN', prefix: 'QTN', color: '#2563eb', icon: 'FileText',
@@ -77,7 +77,7 @@ export const MODULES: ModuleConfig[] = [
   },
   {
     slug: 'survey', title: 'Survey List', short: 'SUR', prefix: 'SUR', color: '#7c3aed', icon: 'ClipboardList',
-    suggest: 'household', itemsTitle: 'Inventory & volume', itemsRequired: true, statuses: ['Scheduled', 'Completed'],
+    suggest: 'household', itemsTitle: 'Inventory & volume', itemsRequired: true, statuses: ['Scheduled', 'Completed', 'From customer'],
     sections: [
       customer(),
       {
@@ -85,6 +85,10 @@ export const MODULES: ModuleConfig[] = [
         fields: [
           { key: 'surveyDate', label: 'Survey date', type: 'date', half: true },
           { key: 'surveyorName', label: 'Surveyor name', half: true },
+          { key: 'fromCity', label: 'From city', half: true },
+          { key: 'toCity', label: 'To city', half: true },
+          { key: 'moveDate', label: 'Moving date', type: 'date', half: true },
+          { key: 'serviceType', label: 'Service type', type: 'select', options: SERVICES, half: true },
           { key: 'fromAddress', label: 'Pickup address', type: 'textarea' },
           { key: 'toAddress', label: 'Delivery address', type: 'textarea' },
           { key: 'floorFrom', label: 'Floor (pickup)', half: true },
@@ -298,71 +302,6 @@ export const MODULES: ModuleConfig[] = [
     },
   },
   {
-    slug: 'voucher', title: 'Payment Voucher', short: 'PV', prefix: 'PV', color: '#b45309', icon: 'Wallet', party: 'payeeName',
-    statuses: ['Draft', 'Approved', 'Paid'],
-    calc: (d) => ({ lines: [], total: num(d.amount) }),
-    sections: [
-      {
-        title: 'Paid to',
-        fields: [
-          { key: 'payeeName', label: 'Payee name', required: true },
-          { key: 'payeePhone', label: 'Payee mobile', type: 'tel', half: true, validate: 'phone' },
-          { key: 'category', label: 'Category', type: 'select', options: ['Driver / labour', 'Fuel', 'Toll & parking', 'Packing material', 'Vehicle hire', 'Office expense', 'Other'], half: true, required: true },
-        ],
-      },
-      {
-        title: 'Payment',
-        fields: [
-          { key: 'amount', label: 'Amount (₹)', type: 'number', required: true, min: 0, money: true, half: true },
-          { key: 'paymentMode', label: 'Payment mode', type: 'select', options: ['Cash', 'UPI', 'Bank transfer', 'Cheque'], required: true, half: true },
-          { key: 'txnRef', label: 'Transaction ID / cheque no.', showIf: nonCash },
-          { key: 'refDoc', label: 'Related LR / bill no. (optional)' },
-          { key: 'particulars', label: 'Particulars', type: 'textarea' },
-          { key: 'approvedBy', label: 'Approved by' },
-        ],
-      },
-    ],
-    terms: [], signLabels: ['Receiver signature', 'Authorised signatory'],
-    check: (d) => {
-      const e: Record<string, string> = {};
-      if (num(d.amount) <= 0) e.amount = 'Amount must be more than zero';
-      if (d.paymentMode && d.paymentMode !== 'Cash' && !(d.txnRef || '').trim()) e.txnRef = 'Enter the transaction ID or cheque number';
-      return e;
-    },
-  },
-  {
-    slug: 'tws', title: 'TWS Form', short: 'TWS', prefix: 'TWS', color: '#0f766e', icon: 'Scale', isNew: false,
-    statuses: ['Draft', 'Completed'],
-    calc: (d) => ({ lines: num(d.weighmentCharge) > 0 ? [l('Weighment charges', num(d.weighmentCharge))] : [], total: num(d.weighmentCharge) }),
-    deriveOn: ['grossWeight', 'tareWeight'],
-    derive: (d): Record<string, string> => (d.grossWeight && d.tareWeight ? { netWeight: String(Math.max(round2(num(d.grossWeight) - num(d.tareWeight)), 0)) } : {}),
-    sections: [
-      customer('Customer', false),
-      {
-        title: 'Vehicle & weighbridge',
-        fields: [
-          { key: 'vehicleNo', label: 'Vehicle number', half: true, validate: 'vehicle', upper: true, required: true, placeholder: 'MH15AB1234' },
-          { key: 'driverName', label: 'Driver name', half: true },
-          { key: 'weighbridge', label: 'Weighbridge name', half: true },
-          { key: 'slipNo', label: 'Weighbridge slip no.', half: true },
-          { key: 'goods', label: 'Goods description', type: 'textarea' },
-        ],
-      },
-      {
-        title: 'Weights (kg)',
-        fields: [
-          { key: 'grossWeight', label: 'Gross weight (loaded)', type: 'number', min: 0, required: true, half: true },
-          { key: 'tareWeight', label: 'Tare weight (empty)', type: 'number', min: 0, required: true, half: true },
-          { key: 'netWeight', label: 'Net weight of goods', type: 'number', readOnly: true, hint: 'Gross minus tare, worked out automatically' },
-          { key: 'weighmentCharge', label: 'Weighment charges (₹)', type: 'number', min: 0, money: true },
-        ],
-      },
-    ],
-    terms: ['Weights are as recorded at the weighbridge on the date shown.'],
-    signLabels: ['Driver signature', 'Authorised signatory'],
-    check: (d): Record<string, string> => (d.grossWeight && d.tareWeight && num(d.grossWeight) <= num(d.tareWeight) ? { grossWeight: 'Gross weight must be more than the tare weight' } : {}),
-  },
-  {
     slug: 'fov', title: 'FOV-SCF Form', short: 'FOV', prefix: 'FOV', color: '#4f46e5', icon: 'ShieldCheck',
     statuses: ['Draft', 'Completed'],
     calc: (d) => {
@@ -399,110 +338,38 @@ export const MODULES: ModuleConfig[] = [
     terms: ['I declare that the value of the goods stated above is true and correct.', 'In case of loss or damage, the claim is limited to the declared value.', 'I have read and accepted the terms of carriage.'],
     signLabels: ['Customer signature', 'Authorised signatory'],
   },
-  {
-    slug: 'noc', title: 'NOC Form', short: 'NOC', prefix: 'NOC', color: '#be123c', icon: 'FileCheck2',
-    statuses: ['Draft', 'Issued'],
-    sections: [
-      customer('Resident', false),
-      {
-        title: 'Society / building',
-        fields: [
-          { key: 'societyName', label: 'Society / building name', required: true },
-          { key: 'societyAddress', label: 'Address', type: 'textarea' },
-          { key: 'flatNo', label: 'Flat / unit no.', required: true, half: true },
-          { key: 'wing', label: 'Wing / tower', half: true },
-        ],
-      },
-      {
-        title: 'Shifting',
-        fields: [
-          { key: 'shiftType', label: 'Shifting type', type: 'select', options: ['Moving out', 'Moving in'], required: true, half: true },
-          { key: 'moveDate', label: 'Shifting date', type: 'date', required: true, half: true },
-          { key: 'vehicleNo', label: 'Vehicle number', validate: 'vehicle', upper: true, half: true },
-          { key: 'duesCleared', label: 'Society dues cleared', type: 'select', options: ['Yes', 'No'], half: true },
-          { key: 'pendingDues', label: 'Pending dues (₹)', type: 'number', min: 0, money: true, showIf: { key: 'duesCleared', in: ['No'] } },
-          { key: 'remarks', label: 'Remarks', type: 'textarea' },
-        ],
-      },
-      {
-        title: 'Issuing authority',
-        fields: [
-          { key: 'authorityName', label: 'Name', half: true },
-          { key: 'authorityDesignation', label: 'Designation', type: 'select', options: ['Secretary', 'Chairman', 'Treasurer', 'Society manager', 'Owner / landlord'], half: true },
-        ],
-      },
-    ],
-    terms: [
-      'The society / owner has no objection to the above resident shifting household goods on the date stated.',
-      'The vehicle may use the approved entry and lift for loading or unloading.',
-      'The resident is responsible for any damage caused to common property during shifting.',
-    ],
-    signLabels: ['Resident signature', 'Authority signature & stamp'],
-    check: (d): Record<string, string> => (d.duesCleared === 'No' && num(d.pendingDues) <= 0 ? { pendingDues: 'Enter the pending amount' } : {}),
-  },
-  {
-    slug: 'loading', title: 'Loading Slip', short: 'LS', prefix: 'LS', color: '#0369a1', icon: 'PackageCheck', isNew: true,
-    itemsTitle: 'Goods loaded', itemsRequired: true, suggest: 'household', statuses: ['Loading', 'Loaded', 'Dispatched'],
-    sections: [
-      customer('Customer', false),
-      {
-        title: 'Loading details',
-        fields: [
-          { key: 'vehicleNo', label: 'Vehicle number', half: true, validate: 'vehicle', upper: true, required: true, placeholder: 'MH15AB1234' },
-          { key: 'lrNo', label: 'LR / bilty no.', half: true },
-          { key: 'driverName', label: 'Driver name', half: true },
-          { key: 'driverPhone', label: 'Driver mobile', type: 'tel', half: true, validate: 'phone' },
-          { key: 'loadingPoint', label: 'Loading point', type: 'textarea' },
-          { key: 'destination', label: 'Destination', type: 'textarea' },
-          { key: 'loadingStart', label: 'Loading started', type: 'time', half: true },
-          { key: 'loadingEnd', label: 'Loading finished', type: 'time', half: true },
-          { key: 'loadedBy', label: 'Loaded by (team)', half: true },
-          { key: 'sealNo', label: 'Seal number', half: true },
-          { key: 'remarks', label: 'Remarks', type: 'textarea' },
-        ],
-      },
-    ],
-    columns: [
-      { key: 'description', label: 'Item', placeholder: 'e.g. Carton boxes', required: true },
-      { key: 'qty', label: 'Qty', type: 'number', default: '1' },
-      { key: 'remarks', label: 'Remarks', placeholder: 'Fragile, top-load…' },
-    ],
-    terms: ['Goods were loaded in the presence of the customer or their representative.'],
-    signLabels: ['Customer / representative', 'Loading supervisor'],
-    check: (d): Record<string, string> => (d.loadingStart && d.loadingEnd && d.loadingEnd < d.loadingStart ? { loadingEnd: 'Finish time is before the start time' } : {}),
-  },
-  {
-    slug: 'letter', title: 'Letterhead', short: 'LTR', prefix: 'LTR', color: '#475569', icon: 'Mail', party: 'toName', letter: true,
-    statuses: ['Draft', 'Final', 'Sent'],
-    sections: [
-      {
-        title: 'Letter',
-        fields: [
-          { key: 'toName', label: 'To (name / company)', required: true },
-          { key: 'toAddress', label: 'Address', type: 'textarea' },
-          { key: 'subject', label: 'Subject', required: true },
-          { key: 'body', label: 'Letter text', type: 'textarea', rows: 10, required: true },
-          { key: 'signName', label: 'Signatory name', half: true },
-          { key: 'signDesignation', label: 'Designation', half: true },
-        ],
-      },
-    ],
-    terms: [], signLabels: ['', ''],
-  },
 ];
 
 export const BY_SLUG: Record<string, ModuleConfig> = Object.fromEntries(MODULES.map((m) => [m.slug, m]));
 
 /** "Create from this document" shortcuts */
 export const CONVERT: Record<string, string[]> = {
-  survey: ['quotation'],
+  survey: ['quotation', 'bill', 'packing'],
   quotation: ['proforma', 'bill', 'packing', 'lr'],
   proforma: ['bill', 'receipt'],
-  bill: ['receipt', 'fov', 'noc'],
-  packing: ['loading', 'lr', 'vehicle'],
-  loading: ['lr', 'tws'],
-  lr: ['loading', 'tws', 'vehicle'],
+  bill: ['receipt', 'fov'],
+  packing: ['lr', 'vehicle'],
+  lr: ['vehicle'],
 };
+
+/**
+ * What a customer may fill through a shared survey link (no login). Everything else on a survey
+ * (surveyor, survey date, terms, volume) is left for your staff. The server enforces this list.
+ */
+export const PUBLIC_SURVEY_FIELDS = ['customerName', 'customerPhone', 'customerEmail', 'fromCity', 'toCity', 'moveDate', 'serviceType', 'fromAddress', 'toAddress', 'floorFrom', 'floorTo', 'lift', 'remarks'];
+export const PUBLIC_SURVEY_COLUMNS = ['description', 'qty'];
+export function publicSurveyConfig(): ModuleConfig {
+  const base = MODULES.find((m) => m.slug === 'survey')!;
+  const keep = new Set(PUBLIC_SURVEY_FIELDS);
+  return {
+    ...base,
+    sections: base.sections
+      .map((sec) => ({ ...sec, title: sec.title === 'Survey details' ? 'Move details' : sec.title, fields: sec.fields.filter((f) => keep.has(f.key)) }))
+      .filter((sec) => sec.fields.length),
+    columns: base.columns!.filter((c) => PUBLIC_SURVEY_COLUMNS.includes(c.key)).map((c) => (c.key === 'description' ? { ...c, label: 'Item' } : c)),
+    itemsTitle: 'Items to shift',
+  };
+}
 
 /** Services with the SAC code filled in when you pick them. Confirm the codes and GST rates with your CA. */
 export const SERVICE_PRESETS: { name: string; hsn: string }[] = [

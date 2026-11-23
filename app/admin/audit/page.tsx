@@ -1,5 +1,6 @@
 'use client';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { LoadCounter } from '@/components/Infinite';
 import { ChevronDown } from 'lucide-react';
 import type { AuditEntry } from '@/lib/types';
 import { MODULES } from '@/lib/config';
@@ -19,17 +20,27 @@ export default function Audit() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [open, setOpen] = useState<string | null>(null);
+  const [total, setTotal] = useState(0);
+  const obs = useRef<IntersectionObserver | null>(null);
 
   const load = useCallback(async (skip = 0) => {
     setLoading(true); setError('');
     const qs = new URLSearchParams({ skip: String(skip), ...Object.fromEntries(Object.entries(f).filter(([, v]) => v)) });
     try {
-      const r = await api<{ entries: AuditEntry[]; hasMore: boolean }>('/api/audit?' + qs);
+      const r = await api<{ entries: AuditEntry[]; hasMore: boolean; total: number }>('/api/audit?' + qs);
       setRows(skip ? (prev) => [...prev, ...r.entries] : r.entries); setMore(r.hasMore);
+      if (r.total >= 0) setTotal(r.total);
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not load'); }
     setLoading(false);
   }, [f]);
   useEffect(() => { const t = setTimeout(() => load(0), 250); return () => clearTimeout(t); }, [load]);
+  // next 50 entries load by themselves when the end of the list comes into view
+  const sentinel = useCallback((el: HTMLElement | null) => {
+    obs.current?.disconnect();
+    if (!el || !more || loading) return;
+    obs.current = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) load(rows.length); }, { rootMargin: '300px 0px' });
+    obs.current.observe(el);
+  }, [more, loading, load, rows.length]);
   if (me && me.role !== 'admin') return <p className="py-10 text-center text-slate-500">Only the admin can open the audit log.</p>;
 
   const sel = (k: keyof typeof f, label: string, opts: [string, string][]) => (
@@ -67,7 +78,8 @@ export default function Audit() {
         {!rows.length && !loading && <li className="p-8 text-center text-sm text-slate-500">No entries match.</li>}
       </ul>
       {loading && <p className="text-center text-sm text-slate-400">Loading…</p>}
-      {more && !loading && <button className="btn-ghost w-full" onClick={() => load(rows.length)}>Load more</button>}
+      {more && !loading && <div ref={sentinel} className="py-2 text-center"><button className="text-xs text-brand-700 underline" onClick={() => load(rows.length)}>Show more</button></div>}
+      <LoadCounter shown={rows.length} total={Math.max(total, rows.length)} />
     </div>
   );
 }

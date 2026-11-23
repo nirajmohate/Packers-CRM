@@ -9,12 +9,13 @@ import { defaultSince } from '@/lib/server/shared';
 export const GET = api({ auth: 'user', allowMustChange: true }, async ({ req, user }) => {
   if (user.mustChangePassword) return { user };
   const since = req.nextUrl.searchParams.get('since') || defaultSince();
+  const syncAt = new Date(); // taken before reading, so nothing saved during the read is missed by the next quick sync
   const [branches, settings, docs] = await Promise.all([
     user.role === 'admin' ? Branch.find({}).sort({ name: 1 }).lean() : Branch.find({ _id: user.branchId }).lean(),
     loadBundle(),
     listDocs(user, { since }),
   ]);
-  return { user, branches: branches.map(branchOut), settings: bundleFor(user, settings), docs, since };
+  return { user, branches: branches.map(branchOut), settings: bundleFor(user, settings), docs, since, syncAt: syncAt.toISOString() };
 });
 
 export const dynamic = 'force-dynamic';

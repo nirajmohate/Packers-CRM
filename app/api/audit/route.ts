@@ -26,8 +26,8 @@ export const GET = api({ auth: 'user' }, async ({ req, user }) => {
   if (from || to) f.at = { ...(from ? { $gte: new Date(from + 'T00:00:00') } : {}), ...(to ? { $lte: new Date(to + 'T23:59:59.999') } : {}) };
   if (q.get('q')) f.$or = [{ summary: { $regex: String(q.get('q')).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } }, { docNumber: { $regex: String(q.get('q')).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } }];
   const skip = Math.max(parseInt(q.get('skip') || '0', 10) || 0, 0);
-  const rows = await Audit.find(f).sort({ at: -1 }).skip(skip).limit(51).lean();
-  return { entries: rows.slice(0, 50).map(out), hasMore: rows.length > 50 };
+  const [rows, total] = await Promise.all([Audit.find(f).sort({ at: -1 }).skip(skip).limit(51).lean(), skip ? Promise.resolve(-1) : Audit.countDocuments(f)]);
+  return { entries: rows.slice(0, 50).map(out), hasMore: rows.length > 50, total };
 });
 
 export const dynamic = 'force-dynamic';

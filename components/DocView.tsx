@@ -16,7 +16,7 @@ export default function DocView({ rec, cfg, docs, home, branch, terms }: { rec: 
   const defRate = num(rec.data.gstRate);
   const receipts = rec.type === 'bill' ? receiptsFor(rec, docs) : [];
   const againstBill = rec.type === 'receipt' && rec.data.againstId ? docs.find((d) => d.id === rec.data.againstId) : undefined;
-  const totalLabel = cfg.slug === 'receipt' ? 'Amount received' : cfg.slug === 'voucher' ? 'Amount paid' : 'Total';
+  const totalLabel = cfg.slug === 'receipt' ? 'Amount received' : 'Total';
   const lines = calc.lines.length ? calc.lines : calc.total > 0 ? [{ label: totalLabel, value: calc.total, bold: true }] : [];
 
   if (cfg.letter) {
