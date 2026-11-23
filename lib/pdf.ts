@@ -3,6 +3,7 @@ import { lineAmount, num, summary, validRows } from './calc';
 import { docCalc } from './ledger';
 import { isVisible } from './fields';
 import { amountInWords, fmtDate, inrPdf } from './format';
+import { readGoods } from './goods';
 
 const BRAND: [number, number, number] = [26, 100, 208];
 const LIGHT: [number, number, number] = [227, 240, 254];
@@ -16,6 +17,7 @@ export interface PdfImages { logo?: string; logoRatio?: number; stamp?: string; 
 export interface PdfCtx { company: Company; images: PdfImages; branch?: Branch; docs: DocRecord[]; terms: string[]; opts: PdfOpts }
 
 function fieldValue(f: Field, v: string) {
+  if (f.type === 'check') return v === '1' ? 'Yes' : 'No';
   if (f.type === 'date') return fmtDate(v);
   if (f.money) return inrPdf(num(v));
   return v;
@@ -107,6 +109,7 @@ export async function buildPdf(rec: DocRecord, cfg: ModuleConfig, ctx: PdfCtx) {
   /* ----- sections ----- */
   const lab = (t: string): object => ({ content: clean(t), styles: { fontStyle: 'bold' as const, textColor: [90, 90, 90] as [number, number, number] } });
   for (const sec of cfg.sections) {
+    if (sec.print === false) continue; // payment / insurance boxes are shown in the totals instead
     const fields = sec.fields.filter((f) => f.type !== 'bill' && rec.data[f.key] && isVisible(f, rec.data));
     if (!fields.length) continue;
     const body: object[][] = [];
@@ -126,6 +129,25 @@ export async function buildPdf(rec: DocRecord, cfg: ModuleConfig, ctx: PdfCtx) {
       head: [[{ content: sec.title, colSpan: 4, styles: { fillColor: LIGHT, textColor: BRAND, fontStyle: 'bold' } }]],
       styles: { fontSize: 8.5, cellPadding: 1.7, lineColor: GRID, lineWidth: 0.2, textColor: 30 },
       columnStyles: { 0: { cellWidth: 34 }, 2: { cellWidth: 34 } },
+    });
+    y = lastY() + 3;
+  }
+
+  /* ----- household items list (quotation / bill) ----- */
+  const goods = cfg.goods ? readGoods(rec.data) : [];
+  if (goods.length) {
+    const withRemarks = goods.some((r) => (r.remarks || '').trim());
+    const withValue = goods.some((r) => num(r.value) > 0);
+    const head = ['#', 'Item / particulars', 'Qty', ...(withValue ? ['Value'] : []), ...(withRemarks ? ['Remarks'] : [])];
+    const body = goods.map((r, i) => [String(i + 1), r.description, r.qty || '', ...(withValue ? [num(r.value) ? inrPdf(num(r.value)) : ''] : []), ...(withRemarks ? [r.remarks || ''] : [])]);
+    if (withValue) body.push(['', 'Total value', '', inrPdf(goods.reduce((a, r) => a + num(r.value), 0)), ...(withRemarks ? [''] : [])]);
+    autoTable(pdf, {
+      startY: y, margin: { left: M, right: M }, theme: 'grid',
+      head: [[{ content: `Items list (${goods.length})`, colSpan: head.length, styles: { fillColor: LIGHT, textColor: BRAND, fontStyle: 'bold' } }], head],
+      body,
+      columnStyles: { 0: { halign: 'center', cellWidth: 10 }, 2: { halign: 'right', cellWidth: 18 }, ...(withValue ? { 3: { halign: 'right', cellWidth: 30 } } : {}) },
+      headStyles: { fillColor: BRAND, textColor: 255, fontSize: 8.5 },
+      styles: { fontSize: 8.5, cellPadding: 1.6, lineColor: GRID, lineWidth: 0.2, textColor: 30 },
     });
     y = lastY() + 3;
   }
@@ -174,7 +196,8 @@ export async function buildPdf(rec: DocRecord, cfg: ModuleConfig, ctx: PdfCtx) {
 
   /* ----- GST summary ----- */
   const m = calc.money;
-  if (m && m.gst > 0) {
+  const hideTotal = !!m?.hideTotal; // quotation: "Total amount in PDF: Hide"
+  if (m && m.gst > 0 && !hideTotal) {
     ensure(10 + m.tax.length * 6);
     const head = m.igst ? ['Tax rate', 'Taxable value', 'IGST', 'Total tax'] : ['Tax rate', 'Taxable value', 'CGST', 'SGST', 'Total tax'];
     const body = m.tax.filter((t) => t.rate > 0).map((t) => (m.igst
@@ -190,7 +213,7 @@ export async function buildPdf(rec: DocRecord, cfg: ModuleConfig, ctx: PdfCtx) {
 
   /* ----- amounts, with bank details and UPI QR in the free column on the left ----- */
   const totalLabel = cfg.slug === 'receipt' ? 'Amount received' : 'Total';
-  const amountLines = calc.lines.length ? calc.lines : calc.total > 0 ? [{ label: totalLabel, value: calc.total, bold: true }] : [];
+  const amountLines = hideTotal ? [] : calc.lines.length ? calc.lines : calc.total > 0 ? [{ label: totalLabel, value: calc.total, bold: true }] : [];
   let qrAmount = 0;
   if (m) {
     if (rec.type === 'bill') qrAmount = calc.status === 'Cancelled' ? 0 : m.balance;
@@ -205,7 +228,7 @@ export async function buildPdf(rec: DocRecord, cfg: ModuleConfig, ctx: PdfCtx) {
   const boxW = 86;
   const bx = W - M - boxW;
   const leftW = bx - M - 6;
-  const wordLines = calc.total > 0 ? (pdf.splitTextToSize(amountInWords(calc.total), leftW) as string[]) : [];
+  const wordLines = calc.total > 0 && !hideTotal ? (pdf.splitTextToSize(amountInWords(calc.total), leftW) as string[]) : [];
   const bankTop = 8 + wordLines.length * 4.2 + 5;
   const leftH = (wordLines.length ? bankTop - 5 : 0) + (hasBank ? (wordLines.length ? 5 : 0) + Math.max(bankLines.length * 4.4 + 6, showQr ? 34 : 0) : 0);
 
@@ -245,7 +268,7 @@ export async function buildPdf(rec: DocRecord, cfg: ModuleConfig, ctx: PdfCtx) {
     if (amountLines.length) {
       const rows = amountLines.map((ln) => [
         { content: ln.label, styles: { fontStyle: ln.bold ? 'bold' : 'normal', fillColor: ln.bold ? LIGHT : undefined } },
-        { content: sign(ln.value), styles: { halign: 'right', fontStyle: ln.bold ? 'bold' : 'normal', fillColor: ln.bold ? LIGHT : undefined } },
+        { content: ln.text ?? sign(ln.value), styles: { halign: 'right', fontStyle: ln.bold ? 'bold' : 'normal', fillColor: ln.bold ? LIGHT : undefined } },
       ]);
       autoTable(pdf, {
         startY, margin: { left: bx, right: M }, theme: 'plain', body: rows as never,
@@ -255,6 +278,14 @@ export async function buildPdf(rec: DocRecord, cfg: ModuleConfig, ctx: PdfCtx) {
       rightBottom = lastY();
     }
     y = Math.max(leftBottom, rightBottom) + 5;
+  }
+
+  /* ----- rate per KG, reverse charge, who pays GST ----- */
+  if (m?.notes?.length && !hideTotal) {
+    ensure(6);
+    pdf.setFont('helvetica', 'normal').setFontSize(8.5).setTextColor(60);
+    pdf.text(m.notes.join('    |    '), M, y);
+    y += 6;
   }
 
   /* ----- notes + terms ----- */

@@ -3,10 +3,11 @@ import Link from 'next/link';
 import type { Branch, DocRecord, Field, ModuleConfig } from '@/lib/types';
 import { docCalc, receiptsFor } from '@/lib/ledger';
 import { lineAmount, num, summary, validRows } from '@/lib/calc';
+import { readGoods } from '@/lib/goods';
 import { amountInWords, fmtDate, inr } from '@/lib/format';
 import { isVisible } from '@/lib/fields';
 
-const show = (f: Field, v: string) => (f.type === 'date' ? fmtDate(v) : f.money ? inr(num(v)) : v);
+const show = (f: Field, v: string) => (f.type === 'check' ? (v === '1' ? 'Yes' : 'No') : f.type === 'date' ? fmtDate(v) : f.money ? inr(num(v)) : v);
 
 export default function DocView({ rec, cfg, docs, home, branch, terms }: { rec: DocRecord; cfg: ModuleConfig; docs: DocRecord[]; home?: string; branch?: Branch; terms: string[] }) {
   const cols = cfg.columns;
@@ -37,6 +38,7 @@ export default function DocView({ rec, cfg, docs, home, branch, terms }: { rec: 
       {branch && <p className="px-1 text-xs text-slate-500">Branch: <b className="text-slate-700">{branch.name}</b></p>}
 
       {cfg.sections.map((s) => {
+        if (s.print === false) return null; // payment / insurance boxes appear in the totals instead
         const fields = s.fields.filter((f) => f.type !== 'bill' && rec.data[f.key] && isVisible(f, rec.data));
         if (!fields.length) return null;
         return (
@@ -55,6 +57,21 @@ export default function DocView({ rec, cfg, docs, home, branch, terms }: { rec: 
           </section>
         );
       })}
+
+      {cfg.goods && readGoods(rec.data).length > 0 && (
+        <section className="card p-4">
+          <h2 className="mb-2 font-semibold text-slate-900">Items list ({readGoods(rec.data).length}) <span lang="hi" className="text-sm font-normal text-slate-500">· सामान की सूची</span></h2>
+          <ol className="divide-y divide-slate-100 text-sm">
+            {readGoods(rec.data).map((r, i) => (
+              <li key={i} className="flex items-start gap-3 py-2">
+                <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-indigo-100 text-xs font-bold text-indigo-700">{i + 1}</span>
+                <span className="min-w-0 flex-1"><span className="font-medium text-slate-900">{r.description || '—'}</span>{r.remarks && <span className="block text-xs text-slate-500">{r.remarks}</span>}</span>
+                <span className="shrink-0 text-right font-semibold text-slate-700">× {r.qty || 1}{num(r.value) > 0 && <span className="block text-xs font-normal text-slate-500">{inr(num(r.value))}</span>}</span>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
 
       {cols && rows.length > 0 && (
         <section className="card p-4">
@@ -85,11 +102,13 @@ export default function DocView({ rec, cfg, docs, home, branch, terms }: { rec: 
           <dl className="space-y-1.5 text-sm">
             {lines.map((ln, i) => (
               <div key={i} className={`flex justify-between ${ln.bold ? 'border-t border-slate-100 pt-2 text-base font-bold text-brand-800' : ''}`}>
-                <dt>{ln.label}</dt><dd>{ln.value < 0 ? '- ' : ''}{inr(Math.abs(ln.value))}</dd>
+                <dt>{ln.label}</dt><dd className="whitespace-nowrap">{ln.text ?? `${ln.value < 0 ? '- ' : ''}${inr(Math.abs(ln.value))}`}</dd>
               </div>
             ))}
           </dl>
           {calc.total > 0 && <p className="mt-3 text-xs text-slate-500">{amountInWords(calc.total)}</p>}
+          {!!calc.money?.notes?.length && <p className="mt-1 text-xs text-slate-600">{calc.money.notes.join(' · ')}</p>}
+          {calc.money?.hideTotal && <p className="mt-1 text-xs font-medium text-amber-700">The total is hidden on the PDF (Payment details › Total amount in PDF).</p>}
         </section>
       )}
 

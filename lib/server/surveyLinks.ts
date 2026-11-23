@@ -3,6 +3,7 @@ import { createHash, randomBytes } from 'crypto';
 import { Types } from 'mongoose';
 import type { Row, SessionUser } from '../types';
 import { HOUSEHOLD, PUBLIC_SURVEY_COLUMNS, PUBLIC_SURVEY_FIELDS } from '../config';
+import { cftOf } from '../catalog';
 import { audit } from './audit';
 import { createDoc } from './docs';
 import { ApiError } from './http';
@@ -91,9 +92,13 @@ export async function publicSubmit(token: string, body: Rec) {
     for (const c of PUBLIC_SURVEY_COLUMNS) row[c] = typeof r?.[c] === 'string' || typeof r?.[c] === 'number' ? String(r[c]).slice(0, 200) : '';
     // volume filled from the standard list when the name matches; staff can change it later
     const hh = HOUSEHOLD.find((h) => h.name.toLowerCase() === (row.description || '').trim().toLowerCase());
-    row.cft = hh ? String(hh.cft) : '';
+    const cft = hh?.cft ?? cftOf(row.description || '');
+    row.cft = cft ? String(cft) : '';
     return row;
   });
+  // a customer must at least say who they are (the only required boxes in the whole app)
+  if (!(data.customerName ?? '').trim() || !(data.customerPhone ?? '').trim())
+    throw new ApiError(422, 'Please fill your name and mobile number', { ...(!(data.customerName ?? '').trim() ? { customerName: 'Required' } : {}), ...(!(data.customerPhone ?? '').trim() ? { customerPhone: 'Required' } : {}) });
   const today = new Date(Date.now() + 5.5 * 3600_000).toISOString().slice(0, 10); // date in India
   const who: SessionUser = { id: 'survey-link', name: 'Customer (survey link)', role: 'manager', branchId: l.branchId, loginId: '', mustChangePassword: false } as SessionUser;
 

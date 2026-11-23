@@ -1,9 +1,10 @@
 'use client';
-import { useRef } from 'react';
+import { useId, useMemo, useRef, useState } from 'react';
 import { Check, Pencil, Plus, Trash2, X } from 'lucide-react';
 import type { Column, ModuleConfig, Row } from '@/lib/types';
 import { lineAmount } from '@/lib/calc';
 import { inr } from '@/lib/format';
+import { catalogFor, searchCatalog } from '@/lib/catalog';
 import { FieldLabel, Hi } from './ui';
 
 /**
@@ -27,11 +28,12 @@ export interface ItemsEditorProps {
   onCancelEdit: () => void;
   onRemove: (i: number) => void;
   onChip: (name: string) => void;
+  /** keeps the box ids unique when two lists are on one page */
+  idPrefix?: string;
 }
 
-function Box({ c, value, error, listId, onChange, onEnter, inputRef }: { c: Column; value: string; error?: string; listId?: string; onChange: (v: string) => void; onEnter: () => void; inputRef?: React.RefObject<HTMLInputElement> }) {
+function Box({ c, value, error, listId, onChange, onEnter, inputRef, id }: { c: Column; value: string; error?: string; listId?: string; onChange: (v: string) => void; onEnter: () => void; inputRef?: React.RefObject<HTMLInputElement>; id: string }) {
   const cls = `input ${error ? 'border-red-500 ring-2 ring-red-100' : ''}`;
-  const id = 'entry-' + c.key;
   if (c.type === 'select')
     return (
       <select id={id} data-err={error ? '1' : undefined} className={cls} value={value} onChange={(e) => onChange(e.target.value)}>
@@ -50,12 +52,63 @@ function Box({ c, value, error, listId, onChange, onEnter, inputRef }: { c: Colu
   );
 }
 
+/** Item name box with a suggestion list under it: typing "fri" offers Fridge / refrigerator…, "पलंग" offers beds. */
+function ItemSearch({ id, value, error, placeholder, kind, onChange, onPicked, onEnter, inputRef }: {
+  id: string; value: string; error?: string; placeholder?: string; kind: 'services' | 'household';
+  onChange: (v: string) => void; onPicked: () => void; onEnter: () => void; inputRef?: React.RefObject<HTMLInputElement>;
+}) {
+  const [show, setShow] = useState(false);
+  const [active, setActive] = useState(0);
+  const listId = useId();
+  const results = useMemo(() => searchCatalog(catalogFor(kind), value, 8), [value, kind]);
+  const exact = results.length === 1 && results[0].name.toLowerCase() === value.trim().toLowerCase();
+  const visible = show && results.length > 0 && !exact;
+  const pick = (name: string) => { onChange(name); setShow(false); onPicked(); };
+  return (
+    <div className="relative">
+      <input
+        id={id} ref={inputRef} data-err={error ? '1' : undefined} className={`input ${error ? 'border-red-500 ring-2 ring-red-100' : ''}`}
+        value={value} placeholder={placeholder} maxLength={200} autoComplete="off"
+        role="combobox" aria-expanded={visible} aria-controls={listId} aria-autocomplete="list"
+        onChange={(e) => { onChange(e.target.value); setShow(true); setActive(0); }}
+        onFocus={(e) => {
+          setShow(true);
+          // on a phone, bring the box near the top so the list is not hidden behind the keyboard or the bottom menu
+          const el = e.currentTarget;
+          if (window.innerWidth < 1024) setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 250);
+        }}
+        onBlur={() => setTimeout(() => setShow(false), 150)}
+        onKeyDown={(e) => {
+          if (visible && e.key === 'ArrowDown') { e.preventDefault(); setActive((a) => (a + 1) % results.length); }
+          else if (visible && e.key === 'ArrowUp') { e.preventDefault(); setActive((a) => (a - 1 + results.length) % results.length); }
+          else if (e.key === 'Escape') setShow(false);
+          else if (e.key === 'Enter') { e.preventDefault(); if (visible) pick(results[active].name); else onEnter(); }
+        }}
+      />
+      {visible && (
+        <ul id={listId} role="listbox" className="absolute left-0 right-0 top-full z-40 mt-1 max-h-72 overflow-y-auto rounded-xl border border-slate-300 bg-white py-1 shadow-xl">
+          {results.map((it, i) => (
+            <li key={it.name} role="option" aria-selected={i === active}>
+              <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => pick(it.name)} onMouseEnter={() => setActive(i)}
+                className={`flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm ${i === active ? 'bg-orange-50 text-orange-900' : 'text-slate-800'}`}>
+                <span className="min-w-0 truncate font-medium">{it.name}</span>
+                {it.cft ? <span className="shrink-0 text-[11px] text-slate-400">{it.cft} CFT</span> : null}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export default function ItemsEditor(p: ItemsEditorProps) {
   const { cfg } = p;
   const cols = cfg.columns ?? [];
   const first = useRef<HTMLInputElement>(null);
   const add = () => { p.onAdd(); setTimeout(() => first.current?.focus(), 30); };
   const isEditing = p.editing !== null;
+  const pre = p.idPrefix ?? 'entry-';
 
   return (
     <div className="space-y-4">
@@ -66,14 +119,20 @@ export default function ItemsEditor(p: ItemsEditorProps) {
         </p>
         {p.chips.length > 0 && !isEditing && (
           <div className="no-scrollbar -mx-1 mb-2 flex gap-2 overflow-x-auto px-1 pb-1">
-            {p.chips.map((c) => <button key={c} type="button" onClick={() => { p.onChip(c); setTimeout(() => document.getElementById(cols[1] ? 'entry-' + cols[1].key : 'entry-description')?.focus(), 30); }} className="whitespace-nowrap rounded-full border border-orange-300 bg-white px-3 py-1.5 text-xs font-medium text-orange-800 active:bg-orange-100">+ {c}</button>)}
+            {p.chips.map((c) => <button key={c} type="button" onClick={() => { p.onChip(c); setTimeout(() => document.getElementById(pre + (cols[1] ? cols[1].key : 'description'))?.focus(), 30); }} className="whitespace-nowrap rounded-full border border-orange-300 bg-white px-3 py-1.5 text-xs font-medium text-orange-800 active:bg-orange-100">+ {c}</button>)}
           </div>
         )}
         <div className="grid grid-cols-2 gap-2 lg:grid-cols-6">
           {cols.map((c, ci) => (
             <div key={c.key} className={ci === 0 || c.wide ? 'col-span-2' : ''}>
-              <FieldLabel text={c.label} required={c.required} htmlFor={'entry-' + c.key} />
-              <Box c={c} value={p.entry[c.key] ?? ''} error={p.entryErrors[c.key]} listId={ci === 0 ? p.listId : undefined} onChange={(v) => p.onEntry(c.key, v)} onEnter={add} inputRef={ci === 0 ? first : undefined} />
+              <FieldLabel text={c.label} required={c.required} htmlFor={pre + c.key} />
+              {ci === 0 && cfg.suggest ? (
+                <ItemSearch id={pre + c.key} value={p.entry[c.key] ?? ''} error={p.entryErrors[c.key]} placeholder={c.placeholder} kind={cfg.suggest}
+                  onChange={(v) => p.onEntry(c.key, v)} onEnter={add} inputRef={first}
+                  onPicked={() => setTimeout(() => document.getElementById(pre + (cols[1]?.key ?? c.key))?.focus(), 20)} />
+              ) : (
+                <Box id={pre + c.key} c={c} value={p.entry[c.key] ?? ''} error={p.entryErrors[c.key]} listId={ci === 0 ? p.listId : undefined} onChange={(v) => p.onEntry(c.key, v)} onEnter={add} inputRef={ci === 0 ? first : undefined} />
+              )}
               {p.entryErrors[c.key] && <p className="mt-1 text-xs font-medium text-red-600">{p.entryErrors[c.key]}</p>}
             </div>
           ))}
@@ -96,7 +155,7 @@ export default function ItemsEditor(p: ItemsEditorProps) {
           <ol className="divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-300 bg-white">
             {p.items.map((r, i) => {
               const errs = cols.map((c) => p.errors[`item-${i}-${c.key}`] && `${c.label}: ${p.errors[`item-${i}-${c.key}`]}`).filter(Boolean);
-              const details = cols.slice(1).filter((c) => (r[c.key] ?? '').trim()).map((c) => `${c.label}: ${c.key === 'rate' ? inr(Number(r[c.key]) || 0) : c.key === 'gst' ? r[c.key] + '%' : r[c.key]}`);
+              const details = cols.slice(1).filter((c) => (r[c.key] ?? '').trim()).map((c) => `${c.label}: ${c.key === 'rate' || c.key === 'value' ? inr(Number(r[c.key]) || 0) : c.key === 'gst' ? r[c.key] + '%' : r[c.key]}`);
               return (
                 <li key={i} className={`flex items-start gap-3 px-3 py-2.5 ${p.editing === i ? 'bg-amber-50' : errs.length ? 'bg-red-50' : i % 2 ? 'bg-slate-50' : ''}`}>
                   <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-indigo-100 text-xs font-bold text-indigo-700">{i + 1}</span>

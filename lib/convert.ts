@@ -1,7 +1,8 @@
 import type { DocRecord, ModuleConfig, Row } from './types';
 import { isVisible } from './fields';
 import { docCalc } from './ledger';
-import { round2 } from './calc';
+import { FREIGHT, lineAmount, moneyCalc, round2, validRows } from './calc';
+import { GOODS_KEY, readGoods, writeGoods } from './goods';
 
 /** Build a pre-filled draft for `target` from an existing document. */
 export function prefillFrom(src: DocRecord, srcCfg: ModuleConfig, target: ModuleConfig, docs: DocRecord[], home?: string) {
@@ -14,7 +15,15 @@ export function prefillFrom(src: DocRecord, srcCfg: ModuleConfig, target: Module
     data[k] = v;
   }
   let items: Row[] = [];
-  if (target.columns) {
+  // household goods (survey / packing list items, or another document's Items list) go into the Items list,
+  // not into the priced services
+  const householdSource = src.type === 'survey' || src.type === 'packing';
+  if (target.goods) {
+    const goods = srcCfg.goods ? readGoods(src.data) : householdSource ? src.items.filter((r) => (r.description || '').trim()).map((r) => ({ description: r.description, qty: r.qty || '1', remarks: r.remarks || '' })) : [];
+    const text = writeGoods(goods);
+    if (text) data[GOODS_KEY] = text;
+  }
+  if (target.columns && !(target.goods && householdSource)) {
     const cols = target.columns;
     items = src.items
       .filter((r) => (r.description || '').trim())
@@ -44,6 +53,33 @@ export function prefillFrom(src: DocRecord, srcCfg: ModuleConfig, target: Module
     data.purpose = `Payment against ${srcCfg.title} ${src.number}`;
   }
   if (target.slug === 'fov') data.remarks = `Linked to ${srcCfg.title} ${src.number}`;
+  /* ---- quotation / bill boxes that have different names in the source ---- */
+  const put = (k: string, v: string | undefined) => { if (v && fields.has(k) && !data[k]) data[k] = v; };
+  if (target.freight) {
+    // survey list → quotation / bill
+    put('movingType', src.data.serviceType);
+    put('fromLift', src.data.lift);
+    // quotation → bill: sender (consignor) is the customer at the old address, receiver (consignee) at the new one
+    if (target.slug === 'bill' && src.type === 'quotation') {
+      data.consignorSame = '0';
+      put('consignorName', src.data.customerName); put('consignorPhone', src.data.customerPhone); put('consignorGst', src.data.customerGst);
+      put('consigneeName', src.data.customerName); put('consigneePhone', src.data.customerPhone);
+      for (const x of ['Country', 'State', 'City', 'Pincode', 'Address']) { put('consignor' + x, src.data['from' + x]); put('consignee' + x, src.data['to' + x]); put('bill' + x, src.data['from' + x]); }
+      put('billingAddress', src.data.fromAddress);
+    }
+    // an old-style quotation with priced lines: its sub total becomes the freight
+    if (srcCfg.money && src.data.calcMode !== FREIGHT) {
+      const sub = round2(validRows(src.items).reduce((a, r) => a + lineAmount(r), 0));
+      if (sub) data.freight = String(sub);
+    }
+  } else if (target.money && src.data.calcMode === FREIGHT) {
+    // new-style quotation / bill → proforma (still priced lines): one line with the amount before GST
+    const m = moneyCalc(src, { home });
+    items = [{ description: `As per ${srcCfg.title} ${src.number}`, qty: '1', unit: 'Lump sum', rate: String(m.taxable), gst: '', hsn: '' }];
+    if (src.data.gstRate) data.gstRate = /hide/i.test(src.data.gstShow || '') ? '0' : src.data.gstRate;
+    if (src.data.advance) data.advance = src.data.advance;
+  }
+
   for (const k of Object.keys(data)) if (data[k] === '') delete data[k];
   for (const f of fields.values()) if (!isVisible(f, data)) delete data[f.key];
   return { data, items };

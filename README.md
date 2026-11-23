@@ -1,5 +1,37 @@
 # Cloud Packers CRM: Stage 2 (database + login)
 
+## What changed in 0.7.0
+- **Quotation and Bill have new boxes**, the same as the format your staff already use:
+  - Quotation: Quotation details, Move from, Move to (country, state, city, pincode, address, floor, lift), Payment details,
+    Insurance details, Vehicle insurance details, Other details, Items list.
+  - Bill: Bill details (LR no., delivery date, type of shipment, moving path, P.O.), Billing details, Consignor / move from
+    ("same as billing" tick box), Consignee / move to, Payment details (with reverse charge, GST paid by), Package details,
+    Insurance, Vehicle insurance, Other details (payment due date), Items list.
+- **New way of working out the total** (`freightCalc` in `lib/calc.ts`): freight + packing / unpacking / loading /
+  unloading / packing material (each "Included in Freight", "Extra charge" or "Not Applicable") + storage, car transport,
+  miscellaneous, other, S.T., green tax = sub total; minus discount; plus surcharge (% of freight); plus GST (unless
+  "GST Charge Hide"; not added when reverse charge = Yes); plus insurance / vehicle insurance when "Included"
+  ("Optional" is shown but not added). Insurance uses the declared value, or the Items list total value when empty.
+  Quotation option "Total amount in PDF: Hide" leaves the totals off the PDF.
+- Older quotations and bills (made with the priced "Services & charges" list) keep their old total. When one is opened
+  for editing, its old sub total moves into Freight and the old lines are kept in the remark, with a notice to check.
+  Proforma Invoice still uses the priced list; one made from a new quotation gets a single line with its amount.
+- **Items list** now has Item, Qty, Value (₹) and Remarks.
+- **Item search**: typing in an item box shows matching items from about 120 household items with other names and Hindi
+  ("fri" → Fridge, "पलंग" → beds, "alm" → Almirah). Arrow keys + Enter, or tap. The list is in `lib/catalog.ts`.
+
+## What changed in 0.6.0
+- **Nothing is mandatory.** Every form saves with whatever is filled in. The branch is picked for you and the date
+  defaults to today. Only typed values are checked (a mobile number must be 10 digits, an amount cannot be negative…).
+  The one exception is the customer survey link form, where the customer must give a name and mobile number.
+- **Forms open section by section**: "Main details" (number, date, branch, status, customer) is open; every other
+  section is closed until tapped, with a "filled" count. A section with a problem opens itself and shows a red mark.
+  Same on phone and desktop.
+- **Items list on Quotation and Bill** (bed, LED TV, fridge… with quantity and remarks), before "Services & charges".
+  It is printed on the PDF and shown on the document page, without prices. Making a quotation or bill from a Survey or
+  Packing List copies its items here; making a bill from a quotation copies the list too.
+  Stored in the document data as `goods` (cleaned and limited by the server), so no database change is needed.
+
 ## What changed in 0.5.0
 - The phone's bottom menu (Home, Documents, +, Payments, Settings) is on every page, including new/edit forms and
   document pages. Save / Cancel are at the end of the form; Download PDF / WhatsApp / Edit are at the top of a document.

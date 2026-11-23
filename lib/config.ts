@@ -1,13 +1,13 @@
 import type { CalcLine, Column, Field, ModuleConfig, Section } from './types';
-import { num, round2 } from './calc';
+import { EXTRA, FREIGHT, INCLUDED, num, round2 } from './calc';
 import { STATES } from './states';
 
 /* ---------- shared pieces ---------- */
-const customer = (title = 'Customer', phoneRequired = true): Section => ({
+const customer = (title = 'Customer', _phoneRequired = true): Section => ({
   title,
   fields: [
-    { key: 'customerName', label: 'Customer name', required: true },
-    { key: 'customerPhone', label: 'Mobile number', type: 'tel', required: phoneRequired, half: true, validate: 'phone', placeholder: '10-digit mobile' },
+    { key: 'customerName', label: 'Customer name' },
+    { key: 'customerPhone', label: 'Mobile number', type: 'tel', half: true, validate: 'phone', placeholder: '10-digit mobile' },
     { key: 'customerEmail', label: 'Email', half: true, validate: 'email' },
   ],
 });
@@ -43,7 +43,7 @@ export const UNITS = ['Nos', 'Trip', 'Kg', 'CFT', 'Sq ft', 'Km', 'Day', 'Month',
 export const GST_RATES = ['0', '5', '12', '18', '28'];
 
 const moneyCols: Column[] = [
-  { key: 'description', label: 'Description', placeholder: 'e.g. Packing & loading', required: true },
+  { key: 'description', label: 'Description', placeholder: 'e.g. Packing & loading' },
   { key: 'qty', label: 'Qty', type: 'number', default: '1' },
   { key: 'unit', label: 'Unit', type: 'select', options: UNITS, default: 'Nos', emptyLabel: '-' },
   { key: 'rate', label: 'Rate (₹)', type: 'number' },
@@ -65,19 +65,122 @@ const nonCash = { key: 'paymentMode', notIn: ['', 'Cash'] };
 
 const l = (label: string, value: number, bold = false): CalcLine => ({ label, value, bold });
 
+/* ---------- quotation & bill, laid out like the format your staff already know ---------- */
+export const MOVING_TYPES = ['Household Shifting', 'Office Shifting', 'Local Shifting', 'Domestic Shifting', 'International Shifting', 'Car Transportation', 'Bike Transportation', 'Commercial Goods', 'Warehouse / Storage'];
+const FLOORS = ['Ground Floor', ...Array.from({ length: 20 }, (_, i) => `${i + 1}${['st', 'nd', 'rd'][i] && i < 3 ? ['st', 'nd', 'rd'][i] : 'th'} Floor`), 'Above 20th Floor'];
+const YES_NO = ['Yes', 'No'];
+const CHARGE_MODES = [INCLUDED, EXTRA, 'Not Applicable'];
+const PCTS = ['0', '0.5', '1', '1.5', '2', '2.5', '3', '4', '5', '6', '7', '8', '9', '10', '12', '15', '18', '20', '25'];
+const INS_TYPES = ['Not Applicable', 'Optional', 'Included'];
+
+/** Country / state / city / pincode / address block; `p` is the key prefix (from, to, bill, consignor…). */
+const place = (p: string, extra: Field[] = [], showIf?: Field['showIf']): Field[] => [
+  { key: p + 'Country', label: 'Country', half: true, showIf },
+  { key: p + 'State', label: 'State', type: 'select', options: STATES, half: true, showIf },
+  { key: p + 'City', label: 'City', half: true, showIf },
+  { key: p + 'Pincode', label: 'Pincode', validate: 'pincode', half: true, showIf },
+  { key: p + 'Address', label: 'Address', type: 'textarea', showIf },
+  ...extra,
+];
+const floorLift = (p: string): Field[] => [
+  { key: p + 'Floor', label: 'Floor', type: 'select', options: FLOORS, half: true },
+  { key: p + 'Lift', label: 'Is lift available?', type: 'select', options: YES_NO, half: true },
+];
+/** "Included in Freight / Extra charge / Not Applicable" box with its amount next to it. */
+const modeCharge = (k: string, label: string): Field[] => [
+  { key: k + 'Mode', label, type: 'select', options: CHARGE_MODES, half: true },
+  { key: k + 'Charge', label: `${label} (₹)`, type: 'number', min: 0, money: true, half: true, showIf: { key: k + 'Mode', in: [EXTRA] } },
+];
+const payment = (kind: 'quotation' | 'bill'): Section => ({
+  title: 'Payment details',
+  print: false,
+  fields: [
+    { key: 'freight', label: 'Freight charge (₹)', type: 'number', min: 0, money: true, half: true },
+    { key: 'advance', label: 'Advance paid (₹)', type: 'number', min: 0, money: true, half: true },
+    ...modeCharge('packing', 'Packing charge'),
+    ...modeCharge('unpacking', 'Unpacking charge'),
+    ...modeCharge('loading', 'Loading charge'),
+    ...modeCharge('unloading', 'Unloading charge'),
+    ...modeCharge('packingMaterial', 'Packing material charge'),
+    { key: 'perUnitRate', label: 'Charge per KG/MT (₹)', type: 'number', min: 0, half: true, hint: 'Printed as a rate; not added to the total' },
+    { key: 'perUnit', label: 'Per', type: 'select', options: ['Per KG', 'Per MT', 'Per Quintal', 'Per CFT', 'Per Trip'], half: true },
+    { key: 'storageCharge', label: 'Storage charge (₹)', type: 'number', min: 0, money: true, half: true },
+    { key: 'carTransportCharge', label: 'Car transport charge (₹)', type: 'number', min: 0, money: true, half: true },
+    { key: 'miscCharge', label: 'Miscellaneous charges (₹)', type: 'number', min: 0, money: true, half: true },
+    { key: 'otherCharge', label: 'Other charges (₹)', type: 'number', min: 0, money: true, half: true },
+    { key: 'stCharge', label: 'S.T. charge (₹)', type: 'number', min: 0, money: true, half: true },
+    { key: 'greenTax', label: kind === 'quotation' ? 'Octroi / green tax (₹)' : 'Green tax (₹)', type: 'number', min: 0, money: true, half: true },
+    { key: 'surchargeMode', label: 'Surcharge', type: 'select', options: ['Not Applicable', 'Applicable'], half: true },
+    { key: 'surchargePct', label: 'Surcharge % (on freight)', type: 'select', options: PCTS, half: true, showIf: { key: 'surchargeMode', in: ['Applicable'] } },
+    { key: 'gstShow', label: 'GST (show / hide)', type: 'select', options: [kind === 'quotation' ? 'GST Charge Show In Quotation' : 'GST Charge Show In Bill', 'GST Charge Hide'], half: true },
+    { key: 'gstRate', label: 'GST %', type: 'select', options: GST_RATES, half: true },
+    { key: 'gstMode', label: 'GST type', type: 'select', options: ['CGST + SGST', 'IGST'], half: true },
+    ...(kind === 'bill'
+      ? [
+          { key: 'reverseCharge', label: 'Reverse charge', type: 'select' as const, options: ['No', 'Yes'], half: true },
+          { key: 'gstPaidBy', label: 'GST paid by', type: 'select' as const, options: ['Consignee', 'Consignor', 'Transporter'], half: true },
+        ]
+      : [{ key: 'totalShow', label: 'Total amount in PDF', type: 'select' as const, options: ['Show', 'Hide'], half: true }]),
+    { key: 'discount', label: 'Discount (₹, on sub total)', type: 'number', min: 0, money: true, half: true },
+    { key: 'roundOff', label: 'Round off the total to the nearest rupee', type: 'check', half: true },
+    { key: 'notes', label: kind === 'quotation' ? 'Remark' : 'Payment remark', type: 'textarea' },
+  ],
+});
+const insurance = (p: string, title: string, valueLabel: string): Section => ({
+  title,
+  print: false,
+  fields: [
+    { key: p + 'Type', label: 'Insurance type', type: 'select', options: INS_TYPES, hint: 'Included: added to the total. Optional: shown, not added.' },
+    { key: p + 'Pct', label: 'Insurance charge (%)', type: 'select', options: PCTS, half: true, showIf: { key: p + 'Type', notIn: ['', 'Not Applicable'] } },
+    { key: p + 'Gst', label: 'GST %', type: 'select', options: GST_RATES, half: true, showIf: { key: p + 'Type', notIn: ['', 'Not Applicable'] } },
+    { key: p + 'Value', label: valueLabel, type: 'number', min: 0, money: true, showIf: { key: p + 'Type', notIn: ['', 'Not Applicable'] }, hint: p === 'ins' ? 'Empty = total value of the Items list' : undefined },
+  ],
+});
+const freightDefaults = (kind: 'quotation' | 'bill'): Record<string, string> => ({
+  calcMode: FREIGHT, fromCountry: 'India', toCountry: 'India', billCountry: 'India', consignorCountry: 'India', consigneeCountry: 'India',
+  fromFloor: 'Ground Floor', toFloor: 'Ground Floor', fromLift: 'Yes', toLift: 'Yes',
+  packingMode: INCLUDED, unpackingMode: INCLUDED, loadingMode: INCLUDED, unloadingMode: INCLUDED, packingMaterialMode: INCLUDED,
+  perUnit: 'Per KG', surchargeMode: 'Not Applicable', surchargePct: '10',
+  gstShow: kind === 'quotation' ? 'GST Charge Show In Quotation' : 'GST Charge Show In Bill', gstRate: kind === 'quotation' ? '0' : '18', gstMode: 'CGST + SGST',
+  totalShow: 'Show', roundOff: '1', insType: 'Optional', insPct: '3', insGst: '0', vinsType: 'Not Applicable', vinsPct: '3', vinsGst: '0',
+  ...(kind === 'bill' ? { reverseCharge: 'No', gstPaidBy: 'Consignee', shipmentType: 'Household Goods', movingPath: 'By Road', weightUnit: 'KG', consignorSame: '1' } : {}),
+});
+
+
 /* ---------- the nine document types in use ---------- */
 export const MODULES: ModuleConfig[] = [
   {
     slug: 'quotation', title: 'Quotation', short: 'QTN', prefix: 'QTN', color: '#2563eb', icon: 'FileText',
-    money: true, advance: 'required', advanceLabel: 'Advance required (₹)', bank: true, qr: true, suggest: 'services', itemsTitle: 'Services & charges', itemsRequired: true,
+    money: true, freight: true, goods: true, advance: 'required', bank: true, qr: true,
     statuses: ['Pending', 'Approved', 'Rejected'],
-    sections: [customer(), billing(), move([{ key: 'validTill', label: 'Valid till', type: 'date', half: true }]), notes],
-    columns: moneyCols, terms: MONEY_TERMS, signLabels: ['Customer signature', 'Authorised signatory'],
+    defaults: freightDefaults('quotation'),
+    sections: [
+      {
+        title: 'Quotation details',
+        fields: [
+          { key: 'movingType', label: 'Moving type', suggestions: MOVING_TYPES, placeholder: 'Select or type moving type', half: true },
+          { key: 'companyName', label: 'Company name of party', half: true },
+          { key: 'customerGst', label: 'Company GST no.', validate: 'gstin', upper: true, half: true, placeholder: '27ABCDE1234F1Z5' },
+          { key: 'customerName', label: 'Party name', half: true },
+          { key: 'customerPhone', label: 'Party mobile', type: 'tel', validate: 'phone', half: true, placeholder: '10-digit mobile' },
+          { key: 'customerEmail', label: 'Email', validate: 'email', half: true },
+          { key: 'packingDate', label: 'Packing date', type: 'date', half: true },
+          { key: 'moveDate', label: 'Moving date', type: 'date', half: true },
+        ],
+      },
+      { title: 'Move from', fields: [...place('from'), ...floorLift('from')] },
+      { title: 'Move to', fields: [...place('to'), ...floorLift('to')] },
+      payment('quotation'),
+      insurance('ins', 'Insurance details', 'Declaration value of goods (₹)'),
+      insurance('vins', 'Vehicle insurance details', 'Declaration value of vehicle (₹)'),
+      { title: 'Other details', fields: [{ key: 'validTill', label: 'Valid till', type: 'date', half: true }] },
+    ],
+    terms: MONEY_TERMS, signLabels: ['Customer signature', 'Authorised signatory'],
     check: (d, { docDate }): Record<string, string> => (d.validTill && d.validTill < docDate ? { validTill: 'Cannot be before the quotation date' } : {}),
   },
   {
     slug: 'survey', title: 'Survey List', short: 'SUR', prefix: 'SUR', color: '#7c3aed', icon: 'ClipboardList',
-    suggest: 'household', itemsTitle: 'Inventory & volume', itemsRequired: true, statuses: ['Scheduled', 'Completed', 'From customer'],
+    suggest: 'household', itemsTitle: 'Inventory & volume', statuses: ['Scheduled', 'Completed', 'From customer'],
     sections: [
       customer(),
       {
@@ -100,7 +203,7 @@ export const MODULES: ModuleConfig[] = [
       },
     ],
     columns: [
-      { key: 'description', label: 'Item / room', placeholder: 'e.g. Double bed', required: true },
+      { key: 'description', label: 'Item / room', placeholder: 'e.g. Double bed' },
       { key: 'qty', label: 'Qty', type: 'number', default: '1' },
       { key: 'cft', label: 'Volume per unit (CFT)', type: 'number' },
     ],
@@ -109,7 +212,7 @@ export const MODULES: ModuleConfig[] = [
   },
   {
     slug: 'packing', title: 'Packing List', short: 'PKG', prefix: 'PKG', color: '#ea580c', icon: 'PackageOpen',
-    suggest: 'household', itemsTitle: 'Packed items', itemsRequired: true, statuses: ['Pending', 'Packed', 'Delivered'],
+    suggest: 'household', itemsTitle: 'Packed items', statuses: ['Pending', 'Packed', 'Delivered'],
     sections: [
       customer(),
       {
@@ -125,7 +228,7 @@ export const MODULES: ModuleConfig[] = [
       },
     ],
     columns: [
-      { key: 'description', label: 'Item', placeholder: 'e.g. LED TV 43"', required: true },
+      { key: 'description', label: 'Item', placeholder: 'e.g. LED TV 43"' },
       { key: 'qty', label: 'Qty', type: 'number', default: '1' },
       { key: 'boxNo', label: 'Box / marks no.', placeholder: 'e.g. B-12' },
       { key: 'material', label: 'Packing material', placeholder: 'Bubble wrap, carton…' },
@@ -136,7 +239,7 @@ export const MODULES: ModuleConfig[] = [
   },
   {
     slug: 'lr', title: 'LR / Bilty', short: 'LR', prefix: 'LR', color: '#0891b2', icon: 'Truck',
-    itemsTitle: 'Goods description', itemsRequired: true, statuses: ['Booked', 'In transit', 'Delivered'],
+    itemsTitle: 'Goods description', statuses: ['Booked', 'In transit', 'Delivered'],
     calc: (d) => {
       const base = round2(num(d.freight) + num(d.hamali) + num(d.otherCharges));
       const gst = round2((base * num(d.lrGst)) / 100);
@@ -169,11 +272,11 @@ export const MODULES: ModuleConfig[] = [
       {
         title: 'Booking & vehicle',
         fields: [
-          { key: 'fromCity', label: 'From', half: true, required: true },
-          { key: 'toCity', label: 'To', half: true, required: true },
+          { key: 'fromCity', label: 'From', half: true },
+          { key: 'toCity', label: 'To', half: true },
           { key: 'fromAddress', label: 'Pickup address', type: 'textarea' },
           { key: 'toAddress', label: 'Delivery address', type: 'textarea' },
-          { key: 'vehicleNo', label: 'Vehicle number', half: true, validate: 'vehicle', upper: true, required: true, placeholder: 'MH15AB1234' },
+          { key: 'vehicleNo', label: 'Vehicle number', half: true, validate: 'vehicle', upper: true, placeholder: 'MH15AB1234' },
           { key: 'driverName', label: 'Driver name', half: true },
           { key: 'driverPhone', label: 'Driver mobile', type: 'tel', half: true, validate: 'phone' },
           { key: 'moveDate', label: 'Loading date', type: 'date', half: true },
@@ -185,8 +288,8 @@ export const MODULES: ModuleConfig[] = [
       {
         title: 'Freight',
         fields: [
-          { key: 'paymentMode', label: 'Freight paid as', type: 'select', options: ['To pay', 'Paid', 'To be billed'], required: true },
-          { key: 'freight', label: 'Freight (₹)', type: 'number', min: 0, money: true, half: true, required: true },
+          { key: 'paymentMode', label: 'Freight paid as', type: 'select', options: ['To pay', 'Paid', 'To be billed'] },
+          { key: 'freight', label: 'Freight (₹)', type: 'number', min: 0, money: true, half: true },
           { key: 'hamali', label: 'Loading / unloading (₹)', type: 'number', min: 0, money: true, half: true },
           { key: 'otherCharges', label: 'Other charges (₹)', type: 'number', min: 0, money: true, half: true },
           { key: 'lrGst', label: 'GST on freight', type: 'select', options: ['0', '5', '12', '18'], half: true },
@@ -195,8 +298,8 @@ export const MODULES: ModuleConfig[] = [
       },
     ],
     columns: [
-      { key: 'description', label: 'Goods description', placeholder: 'e.g. Household goods', required: true },
-      { key: 'packages', label: 'Packages', type: 'number', required: true },
+      { key: 'description', label: 'Goods description', placeholder: 'e.g. Household goods' },
+      { key: 'packages', label: 'Packages', type: 'number' },
       { key: 'weight', label: 'Weight (kg)', type: 'number' },
     ],
     terms: ['Goods are accepted at owner\'s risk unless stated otherwise.', 'Delivery is subject to payment of freight and other charges.', 'The consignee must check the goods at the time of delivery.'],
@@ -217,7 +320,7 @@ export const MODULES: ModuleConfig[] = [
       {
         title: 'Vehicle details',
         fields: [
-          { key: 'vehicleNo', label: 'Registration number', half: true, validate: 'vehicle', upper: true, required: true, placeholder: 'MH15AB1234' },
+          { key: 'vehicleNo', label: 'Registration number', half: true, validate: 'vehicle', upper: true, placeholder: 'MH15AB1234' },
           { key: 'vehicleType', label: 'Vehicle type', type: 'select', options: ['Car', 'Bike / scooter', 'SUV', 'Van', 'Truck', 'Other'], half: true },
           { key: 'makeModel', label: 'Make & model', half: true },
           { key: 'color', label: 'Colour', half: true },
@@ -247,14 +350,10 @@ export const MODULES: ModuleConfig[] = [
     ],
     terms: ['The condition above was checked with the owner before loading.', 'Existing damage noted here is not the company\'s responsibility.', 'Remove personal belongings and valuables from the vehicle.'],
     signLabels: ['Owner signature', 'Company representative'],
-    check: (d): Record<string, string> => {
-      const bad = ['cFront', 'cRear', 'cBonnet', 'cRoof', 'cLeft', 'cRight', 'cGlass', 'cTyres', 'cInterior', 'cLights'].filter((k) => d[k] === 'Damaged');
-      return bad.length && !(d.damages || '').trim() ? { damages: 'Describe the damage you marked above' } : {};
-    },
   },
   {
     slug: 'proforma', title: 'Proforma Invoice', short: 'PRO', prefix: 'PRO', color: '#9333ea', icon: 'FileClock',
-    money: true, advance: 'required', advanceLabel: 'Advance payable (₹)', bank: true, qr: true, suggest: 'services', itemsTitle: 'Services & charges', itemsRequired: true,
+    money: true, advance: 'required', advanceLabel: 'Advance payable (₹)', bank: true, qr: true, suggest: 'services', itemsTitle: 'Services & charges',
     statuses: ['Draft', 'Sent', 'Paid'],
     sections: [customer(), billing(), move([{ key: 'validTill', label: 'Valid till', type: 'date', half: true }]), notes],
     columns: moneyCols,
@@ -264,10 +363,70 @@ export const MODULES: ModuleConfig[] = [
   },
   {
     slug: 'bill', title: 'Bill / Invoice', short: 'INV', prefix: 'INV', color: '#16a34a', icon: 'ReceiptText',
-    money: true, advance: 'received', advanceLabel: 'Advance already received (₹)', bank: true, qr: true, suggest: 'services', itemsTitle: 'Services & charges', itemsRequired: true,
+    money: true, freight: true, goods: true, advance: 'received', bank: true, qr: true,
     statuses: ['Unpaid', 'Partial', 'Paid', 'Cancelled'],
-    sections: [customer(), billing(true), move(), notes],
-    columns: moneyCols,
+    defaults: freightDefaults('bill'),
+    sections: [
+      {
+        title: 'Bill details',
+        fields: [
+          { key: 'companyName', label: 'Company name of party', half: true },
+          { key: 'lrNo', label: 'LR number', half: true },
+          { key: 'deliveryDate', label: 'Delivery date', type: 'date', half: true },
+          { key: 'shipmentType', label: 'Type of shipment', suggestions: ['Household Goods', 'Office Goods', 'Car', 'Bike', 'Commercial Goods'], half: true },
+          { key: 'movingPath', label: 'Moving path', type: 'select', options: ['By Road', 'By Rail', 'By Air', 'By Sea'], half: true },
+          { key: 'movingPathRemark', label: 'Moving path remark', half: true },
+          { key: 'fromCity', label: 'Move from', half: true },
+          { key: 'toCity', label: 'Move to', half: true },
+          { key: 'vehicleNo', label: 'Vehicle number', validate: 'vehicle', upper: true, half: true, placeholder: 'MH15AB1234' },
+          { key: 'poNumber', label: 'Purchase order (P.O.) no.', half: true },
+          { key: 'poDate', label: 'P.O. date', type: 'date', half: true },
+        ],
+      },
+      {
+        title: 'Billing details',
+        fields: [
+          { key: 'customerName', label: 'Bill to name', half: true },
+          { key: 'customerPhone', label: 'Bill to phone', type: 'tel', validate: 'phone', half: true, placeholder: '10-digit mobile' },
+          { key: 'customerGst', label: 'GSTIN', validate: 'gstin', upper: true, placeholder: '27ABCDE1234F1Z5' },
+          ...place('bill').map((f) => (f.key === 'billAddress' ? { ...f, key: 'billingAddress' } : f)),
+        ],
+      },
+      {
+        title: 'Consignor / move from',
+        fields: [
+          { key: 'consignorSame', label: 'Consignor details same as billing details', type: 'check' },
+          { key: 'consignorName', label: 'Consignor name', half: true, showIf: { key: 'consignorSame', notIn: ['1'] } },
+          { key: 'consignorPhone', label: 'Consignor phone', type: 'tel', validate: 'phone', half: true, showIf: { key: 'consignorSame', notIn: ['1'] } },
+          { key: 'consignorGst', label: 'GSTIN', validate: 'gstin', upper: true, showIf: { key: 'consignorSame', notIn: ['1'] } },
+          ...place('consignor', [], { key: 'consignorSame', notIn: ['1'] }),
+        ],
+      },
+      {
+        title: 'Consignee / move to',
+        fields: [
+          { key: 'consigneeName', label: 'Consignee name', half: true },
+          { key: 'consigneePhone', label: 'Consignee phone', type: 'tel', validate: 'phone', half: true },
+          { key: 'consigneeGst', label: 'GSTIN', validate: 'gstin', upper: true },
+          ...place('consignee'),
+        ],
+      },
+      payment('bill'),
+      {
+        title: 'Package details',
+        fields: [
+          { key: 'packages', label: 'Package', half: true },
+          { key: 'packageDesc', label: 'Description', half: true },
+          { key: 'totalWeight', label: 'Total weight', type: 'number', min: 0, half: true },
+          { key: 'weightUnit', label: 'Weight unit', type: 'select', options: ['KG', 'MT', 'Quintal', 'Ton'], half: true },
+          { key: 'hsn', label: 'HSN / SAC code', half: true },
+          { key: 'packageRemark', label: 'Remark', type: 'textarea' },
+        ],
+      },
+      insurance('ins', 'Insurance details', 'Declaration value of goods (₹)'),
+      insurance('vins', 'Vehicle insurance details', 'Declaration value of vehicle (₹)'),
+      { title: 'Other details', fields: [{ key: 'dueDate', label: 'Payment due date', type: 'date', half: true, hint: 'Used for overdue bills on the Payments page' }] },
+    ],
     terms: ['Please pay the balance by the due date.', 'Payment by cash, UPI or bank transfer. Cheques are subject to realisation.', 'All disputes are subject to local jurisdiction.'],
     signLabels: ['Customer signature', 'Authorised signatory'],
     check: (d, { docDate }): Record<string, string> => (d.dueDate && d.dueDate < docDate ? { dueDate: 'Cannot be before the bill date' } : {}),
@@ -282,8 +441,8 @@ export const MODULES: ModuleConfig[] = [
       {
         title: 'Payment',
         fields: [
-          { key: 'amount', label: 'Amount received (₹)', type: 'number', required: true, min: 0, money: true, half: true },
-          { key: 'paymentMode', label: 'Payment mode', type: 'select', options: PAY_MODES, required: true, half: true },
+          { key: 'amount', label: 'Amount received (₹)', type: 'number', min: 0, money: true, half: true },
+          { key: 'paymentMode', label: 'Payment mode', type: 'select', options: PAY_MODES, half: true },
           { key: 'againstDoc', label: 'Against bill no.', readOnly: true, half: true, showIf: { key: 'againstId', notIn: [''] } },
           { key: 'txnRef', label: 'Transaction ID / cheque no.', showIf: nonCash, half: true },
           { key: 'chequeDate', label: 'Cheque date', type: 'date', showIf: { key: 'paymentMode', in: ['Cheque'] }, half: true },
@@ -296,8 +455,8 @@ export const MODULES: ModuleConfig[] = [
     signLabels: ['Customer signature', 'Receiver signature'],
     check: (d) => {
       const e: Record<string, string> = {};
-      if (num(d.amount) <= 0) e.amount = 'Amount must be more than zero';
-      if (d.paymentMode && d.paymentMode !== 'Cash' && !(d.txnRef || '').trim()) e.txnRef = 'Enter the transaction ID or cheque number';
+      // nothing is mandatory: only a typed amount below zero is refused
+      if (num(d.amount) < 0) e.amount = 'Amount cannot be negative';
       return e;
     },
   },
@@ -325,12 +484,12 @@ export const MODULES: ModuleConfig[] = [
       {
         title: 'Declaration of value',
         fields: [
-          { key: 'goodsValue', label: 'Declared value of goods (₹)', type: 'number', min: 0, money: true, required: true },
+          { key: 'goodsValue', label: 'Declared value of goods (₹)', type: 'number', min: 0, money: true },
           { key: 'fovRate', label: 'FOV rate (%)', type: 'number', min: 0, max: 100, half: true },
           { key: 'fovAmount', label: 'FOV amount (₹)', type: 'number', min: 0, money: true, half: true, hint: 'Value x rate, editable' },
           { key: 'scfCharge', label: 'SCF charge (₹)', type: 'number', min: 0, money: true, half: true },
           { key: 'insured', label: 'Transit insurance taken', type: 'select', options: ['Yes', 'No'], half: true },
-          { key: 'policyNo', label: 'Policy number', showIf: { key: 'insured', in: ['Yes'] }, required: true },
+          { key: 'policyNo', label: 'Policy number', showIf: { key: 'insured', in: ['Yes'] } },
           { key: 'remarks', label: 'Remarks', type: 'textarea' },
         ],
       },
@@ -364,7 +523,7 @@ export function publicSurveyConfig(): ModuleConfig {
   return {
     ...base,
     sections: base.sections
-      .map((sec) => ({ ...sec, title: sec.title === 'Survey details' ? 'Move details' : sec.title, fields: sec.fields.filter((f) => keep.has(f.key)) }))
+      .map((sec) => ({ ...sec, title: sec.title === 'Survey details' ? 'Move details' : sec.title, fields: sec.fields.filter((f) => keep.has(f.key)).map((f) => (f.key === 'customerName' || f.key === 'customerPhone' ? { ...f, required: true } : f)) }))
       .filter((sec) => sec.fields.length),
     columns: base.columns!.filter((c) => PUBLIC_SURVEY_COLUMNS.includes(c.key)).map((c) => (c.key === 'description' ? { ...c, label: 'Item' } : c)),
     itemsTitle: 'Items to shift',

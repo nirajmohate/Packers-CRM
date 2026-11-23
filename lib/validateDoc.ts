@@ -19,10 +19,9 @@ export function itemErrors(cfg: ModuleConfig, r: Row): Record<string, string> {
     else if (c.type === 'number' && v) {
       const n = Number(v);
       if (!Number.isFinite(n) || n < 0) e[c.key] = 'Enter a valid number';
-      else if ((c.key === 'qty' || c.key === 'packages') && n <= 0) e[c.key] = 'Must be more than 0';
     }
   }
-  if (cfg.money && !(r.rate || '').trim()) e.rate = 'Enter the rate';
+  // nothing is mandatory: an empty rate simply counts as zero
   return e;
 }
 export const rowTouched = (cfg: ModuleConfig, r: Row) => !!cfg.columns && isTouched(cfg, r);

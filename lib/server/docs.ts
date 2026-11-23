@@ -5,6 +5,7 @@ import { BY_SLUG, MODULES } from '../config';
 import { billInfo } from '../ledger';
 import { fyOf, formatNumber } from '../numbering';
 import { cleanData, validateDoc } from '../validateDoc';
+import { GOODS_KEY, cleanGoods } from '../goods';
 import { audit } from './audit';
 import { ApiError } from './http';
 import { Branch, Counter, Doc } from './models';
@@ -42,6 +43,14 @@ export function sanitize(cfg: ModuleConfig, rawData: unknown, rawItems: unknown)
   const data: Record<string, string> = {};
   if (rawData && typeof rawData === 'object') {
     for (const [k, v] of Object.entries(rawData as Rec)) {
+      if (k === GOODS_KEY && cfg.goods && typeof v === 'string') {
+        // the household items list: parsed, cleaned and limited here, never stored as sent
+        let rows: unknown = [];
+        try { rows = JSON.parse(v.slice(0, 60000)); } catch { rows = []; }
+        const clean = cleanGoods(rows);
+        if (clean.length) data[GOODS_KEY] = JSON.stringify(clean);
+        continue;
+      }
       if (!keys.has(k) || (typeof v !== 'string' && typeof v !== 'number')) continue;
       data[k] = String(v).slice(0, k === 'body' || k === 'terms' ? 20000 : 2000);
     }
@@ -55,6 +64,8 @@ export function sanitize(cfg: ModuleConfig, rawData: unknown, rawItems: unknown)
       items.push(row);
     }
   }
+  // quotation / bill saved with the new form always use the freight calculation (older ones keep theirs until edited)
+  if (cfg.freight) data.calcMode = 'freight';
   return { data: cleanData(cfg, data), items };
 }
 
@@ -172,7 +183,8 @@ function diffDoc(cfg: ModuleConfig, before: Rec, after: { number: string; status
   push('Number', before.number, after.number);
   push('Status', before.status, after.status);
   push('Date', before.docDate, after.docDate);
-  const labels = new Map(cfg.sections.flatMap((s) => s.fields).map((f) => [f.key, f.label]));
+  const labels = new Map<string, string>(cfg.sections.flatMap((s) => s.fields).map((f) => [f.key, f.label]));
+  labels.set('goods', 'Items list');
   const bd = before.data ?? {};
   for (const k of new Set([...Object.keys(bd), ...Object.keys(after.data)])) push(labels.get(k) ?? k, bd[k], after.data[k]);
   const bi: Row[] = before.items ?? [];

@@ -1,4 +1,4 @@
-export type FieldType = 'text' | 'number' | 'date' | 'time' | 'textarea' | 'select' | 'tel' | 'bill';
+export type FieldType = 'text' | 'number' | 'date' | 'time' | 'textarea' | 'select' | 'tel' | 'bill' | 'check';
 export type Validator = 'phone' | 'gstin' | 'pan' | 'email' | 'vehicle' | 'ifsc' | 'upi' | 'pincode';
 export type Row = Record<string, string>;
 
@@ -21,6 +21,8 @@ export interface Field {
   max?: number;
   rows?: number;
   upper?: boolean;
+  /** typing shows these as suggestions, but anything can be typed ("select or type") */
+  suggestions?: string[];
 }
 
 export interface Column {
@@ -35,9 +37,14 @@ export interface Column {
   emptyLabel?: string;
 }
 
-export interface Section { title: string; fields: Field[] }
+export interface Section {
+  title: string;
+  fields: Field[];
+  /** false: used for the totals only, not listed field by field on the document page and PDF */
+  print?: boolean;
+}
 
-export interface CalcLine { label: string; value: number; bold?: boolean }
+export interface CalcLine { label: string; value: number; bold?: boolean; /** shown instead of the amount, e.g. "Included" */ text?: string }
 export interface CustomCalc { lines: CalcLine[]; total: number; balance?: number }
 
 export interface ModuleConfig {
@@ -57,6 +64,12 @@ export interface ModuleConfig {
   suggest?: 'services' | 'household';
   /** items are qty x rate with discount / per-line GST / round-off */
   money?: boolean;
+  /** has the household "Items list" (bed, TV…) before the priced services */
+  goods?: boolean;
+  /** totals come from Freight + charge boxes + surcharge + insurance + GST (quotation / bill) */
+  freight?: boolean;
+  /** starting values for a new document */
+  defaults?: Record<string, string>;
   advance?: 'received' | 'required';
   advanceLabel?: string;
   /** totals for non-money documents */
