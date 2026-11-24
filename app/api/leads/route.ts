@@ -14,8 +14,8 @@ export const GET = api({ auth: 'user' }, async ({ req, user }) => {
   const filter: Record<string, unknown> = {};
   if (isBranchUser(user)) filter.branchId = user.branchId;
   else if (q.get('branch')) filter.branchId = String(q.get('branch')).slice(0, 40);
-  const rows = await Lead.find(filter).sort({ leadDate: -1, createdAt: -1 }).limit(MAX).lean();
-  return { leads: rows.map((r) => leadOut(r as Record<string, unknown>)), capped: rows.length === MAX };
+  const rows = (await Lead.find(filter).sort({ leadDate: -1, createdAt: -1 }).limit(MAX).lean()) as Record<string, unknown>[];
+  return { leads: rows.map((r: Record<string, unknown>) => leadOut(r)), capped: rows.length === MAX };
 });
 
 export const POST = api({ auth: 'user' }, async ({ req, user }) => {
