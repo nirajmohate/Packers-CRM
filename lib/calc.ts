@@ -24,6 +24,25 @@ export interface MoneyCalc {
   notes?: string[];
   reverseCharge?: boolean;
   hideTotal?: boolean;
+  /** which of the six GST choices applies */
+  gstMode?: GstChoice;
+  /** GST shown as "extra" (not in the total) */
+  gstExtra?: number;
+}
+
+/** The GST choices on a quotation / bill (same list as the format your staff use). */
+export type GstChoice = 'show' | 'rateOnly' | 'none' | 'exempt' | 'extra' | 'inclusive';
+export const gstOptions = (doc: 'Quotation' | 'Bill') => [
+  `GST Charge Show In ${doc}`, 'GST % Show & GST Charge Hide', `Without GST ${doc}`, 'GST Exempted', 'GST Extra', 'GST Included in Subtotal',
+];
+export function gstChoice(v?: string): GstChoice {
+  const s = (v || '').toLowerCase();
+  if (s.startsWith('gst % show')) return 'rateOnly';
+  if (s.startsWith('without gst') || s === 'gst charge hide') return 'none'; // "GST Charge Hide" was the old name
+  if (s.includes('exempt')) return 'exempt';
+  if (s === 'gst extra') return 'extra';
+  if (s.includes('included in subtotal')) return 'inclusive';
+  return 'show';
 }
 
 /** IGST when the supply is to another state; "Auto" compares the company state with the place of supply. */
@@ -156,10 +175,22 @@ function freightCalc(d: Record<string, string>, ctx: MoneyCtx): MoneyCalc {
   const surcharge = round2((freight * surPct) / 100);
   const extras: CalcLine[] = surcharge > 0 ? [{ label: `Surcharge @ ${surPct}% on freight`, value: surcharge }] : [];
 
-  const gstOn = !/hide/i.test(d.gstShow || '');
-  const groups = new Map<number, number>();
-  const addTax = (rate: number, amount: number) => { if (amount) groups.set(rate, round2((groups.get(rate) ?? 0) + amount)); };
-  addTax(gstOn ? pos('gstRate') : 0, round2(sub - disc + surcharge));
+  const mode = gstChoice(d.gstShow);
+  const charged = mode === 'show' || mode === 'rateOnly' || mode === 'inclusive';
+  const groups = new Map<number, number>(); // rate -> taxable value
+  let extraGst = 0;
+  let typed = 0; // amounts as typed (for "inclusive", these already contain the GST)
+  /** adds an amount at a GST rate; "inclusive" amounts already contain the GST, so the taxable value is taken out of them */
+  const addTax = (rate: number, amount: number) => {
+    if (!amount) return;
+    typed = round2(typed + amount);
+    let taxable = amount;
+    if (mode === 'inclusive' && rate > 0) taxable = round2((amount * 100) / (100 + rate));
+    if (mode === 'extra' && rate > 0) extraGst = round2(extraGst + (amount * rate) / 100);
+    const r = charged ? rate : 0;
+    groups.set(r, round2((groups.get(r) ?? 0) + taxable));
+  };
+  addTax(pos('gstRate'), round2(sub - disc + surcharge));
 
   // insurance: on the declared value (or the total value of the Items list when no value is typed)
   const goodsValue = round2(readGoods(d).reduce((a, r) => a + num(r.value), 0));
@@ -174,7 +205,7 @@ function freightCalc(d: Record<string, string>, ctx: MoneyCtx): MoneyCalc {
     const text = `${label} @ ${pct}% on ${value.toLocaleString('en-IN')}`;
     if (type === 'Optional') { optional.push({ label: `${text} (optional, not in total)`, value: amt }); return; }
     extras.push({ label: text, value: amt });
-    addTax(gstOn ? pos(prefix + 'Gst') : 0, amt);
+    addTax(pos(prefix + 'Gst'), amt);
   };
   insurance('ins', 'Insurance', goodsValue);
   insurance('vins', 'Vehicle insurance', 0);
@@ -188,12 +219,20 @@ function freightCalc(d: Record<string, string>, ctx: MoneyCtx): MoneyCalc {
   const gst = round2(tax.reduce((a, t) => a + t.gst, 0));
   const cgst = round2(tax.reduce((a, t) => a + t.cgst, 0));
   const sgst = round2(tax.reduce((a, t) => a + t.sgst, 0));
+
+  // inclusive: taxable + GST must add up to exactly what was typed (no 1-paisa drift from rounding)
+  if (mode === 'inclusive' && tax.length) {
+    const drift = round2(typed - (taxable + gst));
+    if (drift) { const t = tax[tax.length - 1]; t.taxable = round2(t.taxable + drift); }
+  }
+  const taxable2 = round2(tax.reduce((a, t) => a + t.taxable, 0));
   const reverseCharge = d.reverseCharge === 'Yes';
-  const pre = round2(taxable + (reverseCharge ? 0 : gst));
+  const pre = round2(taxable2 + (reverseCharge ? 0 : gst));
   const roundOff = d.roundOff === '1' ? round2(Math.round(pre) - pre) : 0;
   const total = round2(pre + roundOff);
-
   const notes: string[] = [];
+  if (mode === 'exempt') notes.push('GST exempted');
+  if (mode === 'extra' && extraGst > 0) notes.push(`GST @ ${pos('gstRate')}% extra as applicable`);
   if (pos('perUnitRate') > 0) notes.push(`Rate: Rs. ${pos('perUnitRate')} ${d.perUnit || 'Per KG'}`);
   if (reverseCharge) notes.push('GST payable on reverse charge basis');
   if (d.gstPaidBy && gst > 0) notes.push(`GST paid by: ${d.gstPaidBy}`);
@@ -204,8 +243,8 @@ function freightCalc(d: Record<string, string>, ctx: MoneyCtx): MoneyCalc {
   const paid = advanceMode === 'received' ? round2(adv + received) : 0;
   const balance = round2(Math.max(total - (advanceMode === 'received' ? paid : adv), 0));
   return {
-    sub, disc, discType, discValue, taxable, tax, gst, cgst, sgst, igst: isIgst(d, ctx.home), roundOff, total, adv, received, paid, balance, advanceMode,
-    freight: true, charges, extras, optional, notes, reverseCharge, hideTotal: d.totalShow === 'Hide',
+    sub, disc, discType, discValue, taxable: taxable2, tax, gst, cgst, sgst, igst: isIgst(d, ctx.home), roundOff, total, adv, received, paid, balance, advanceMode,
+    freight: true, charges, extras, optional, notes, reverseCharge, hideTotal: d.totalShow === 'Hide', gstMode: mode, gstExtra: extraGst,
   };
 }
 
@@ -214,15 +253,23 @@ function freightLines(m: MoneyCalc): CalcLine[] {
   out.push({ label: 'Sub total', value: m.sub, bold: true });
   if (m.disc > 0) out.push({ label: `Discount${m.discType === '%' ? ` (${m.discValue}%)` : ''}`, value: -m.disc });
   out.push(...(m.extras ?? []));
-  for (const t of m.tax) {
-    if (t.rate <= 0) continue;
-    const rc = m.reverseCharge ? ' (reverse charge)' : '';
-    if (m.igst) out.push({ label: `IGST @ ${t.rate}%${rc}`, value: t.gst });
-    else {
-      out.push({ label: `CGST @ ${t.rate / 2}%${rc}`, value: t.cgst });
-      out.push({ label: `SGST @ ${t.rate / 2}%${rc}`, value: t.sgst });
+  const rates = m.tax.filter((t) => t.rate > 0);
+  if (m.gstMode === 'rateOnly') {
+    // "GST % Show & GST Charge Hide": the rate is shown, the GST amount is not (it is inside the total)
+    for (const t of rates) out.push({ label: `GST @ ${t.rate}%${m.igst ? ' (IGST)' : ' (CGST + SGST)'}`, value: 0, text: 'Included in total' });
+  } else {
+    if (m.gstMode === 'inclusive' && rates.length) out.push({ label: 'Taxable value', value: round2(m.tax.reduce((a, t) => a + t.taxable, 0)) });
+    const inc = m.gstMode === 'inclusive' ? ' (included)' : '';
+    for (const t of rates) {
+      const rc = m.reverseCharge ? ' (reverse charge)' : '';
+      if (m.igst) out.push({ label: `IGST @ ${t.rate}%${inc}${rc}`, value: t.gst });
+      else {
+        out.push({ label: `CGST @ ${t.rate / 2}%${inc}${rc}`, value: t.cgst });
+        out.push({ label: `SGST @ ${t.rate / 2}%${inc}${rc}`, value: t.sgst });
+      }
     }
   }
+  if (m.gstMode === 'exempt') out.push({ label: 'GST', value: 0, text: 'Exempted' });
   if (m.roundOff !== 0) out.push({ label: 'Round off', value: m.roundOff });
   out.push({ label: 'Total', value: m.total, bold: true });
   if (m.advanceMode === 'received') {
@@ -233,6 +280,7 @@ function freightLines(m: MoneyCalc): CalcLine[] {
     out.push({ label: 'Advance paid', value: m.adv });
     out.push({ label: 'Balance', value: m.balance, bold: true });
   }
+  if (m.gstMode === 'extra' && (m.gstExtra ?? 0) > 0) out.push({ label: 'GST extra (not in total)', value: m.gstExtra ?? 0 });
   out.push(...(m.optional ?? []));
   return out;
 }

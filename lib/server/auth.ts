@@ -55,7 +55,7 @@ export function clearSessionCookie(res: NextResponse) {
 
 export function toSessionUser(u: Record<string, unknown>): SessionUser {
   return {
-    id: String(u._id), name: String(u.name), loginId: String(u.loginId), role: u.role as 'admin' | 'manager',
+    id: String(u._id), name: String(u.name), loginId: String(u.loginId), role: u.role as 'admin' | 'manager' | 'team',
     branchId: u.branchId ? String(u.branchId) : null, mustChangePassword: !!u.mustChangePassword,
   };
 }
@@ -66,7 +66,8 @@ export async function currentUser(req: NextRequest): Promise<SessionUser | null>
   if (!p || !Types.ObjectId.isValid(p.sub)) return null;
   const u = await User.findById(p.sub).lean();
   if (!u || !u.active || (u.sv as number) !== p.sv) return null;
-  if (u.role === 'manager' && !u.branchId) return null;
+  // branch owners and the team must belong to a branch; anything else is refused
+  if (u.role !== 'admin' && (!u.branchId || !['manager', 'team'].includes(String(u.role)))) return null;
   return toSessionUser(u);
 }
 

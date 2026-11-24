@@ -6,6 +6,7 @@ import type { AuditEntry } from '@/lib/types';
 import { MODULES } from '@/lib/config';
 import { api } from '@/lib/api';
 import { useBranches, useSession } from '@/lib/store';
+import { ROLES, ROLE_LABEL } from '@/lib/roles';
 
 const ACTIONS = ['create', 'update', 'status', 'delete', 'restore', 'purge', 'login', 'login_failed', 'logout', 'password_change', 'password_reset', 'upload', 'import', 'backup'];
 const when = (iso: string) => new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -14,7 +15,7 @@ const tone = (a: string) => (/delete|purge|failed/.test(a) ? 'bg-red-50 text-red
 export default function Audit() {
   const me = useSession();
   const branches = useBranches();
-  const [f, setF] = useState({ action: '', docType: '', branchId: '', from: '', to: '', q: '' });
+  const [f, setF] = useState({ action: '', docType: '', branchId: '', role: '', entity: '', from: '', to: '', q: '' });
   const [rows, setRows] = useState<AuditEntry[]>([]);
   const [more, setMore] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -50,11 +51,13 @@ export default function Audit() {
   return (
     <div className="space-y-4">
       <div><h1 className="text-xl font-bold text-slate-900">Audit log</h1><p className="text-xs text-slate-500">Who did what, and when. Entries cannot be edited.</p></div>
-      <section className="card grid grid-cols-2 gap-3 p-4 lg:grid-cols-6">
+      <section className="card grid grid-cols-2 gap-3 p-4 lg:grid-cols-4">
         <div className="col-span-2"><label className="label">Search</label><input className="input" placeholder="Document number or text" value={f.q} onChange={(e) => setF({ ...f, q: e.target.value })} /></div>
         {sel('action', 'Action', ACTIONS.map((a) => [a, a.replace('_', ' ')]))}
         {sel('docType', 'Document', MODULES.map((m) => [m.slug, m.title]))}
         {sel('branchId', 'Branch', branches.map((b) => [b.id, b.name]))}
+        {sel('role', 'Who', ROLES.map((r) => [r, ROLE_LABEL[r]]))}
+        {sel('entity', 'Area', [['auth', 'Sign-ins'], ['doc', 'Documents'], ['lead', 'Customers / leads'], ['user', 'Users'], ['branch', 'Branches'], ['settings', 'Settings']])}
         <div><label className="label">From</label><input type="date" className="input" value={f.from} onChange={(e) => setF({ ...f, from: e.target.value })} /></div>
         <div><label className="label">To</label><input type="date" className="input" value={f.to} onChange={(e) => setF({ ...f, to: e.target.value })} /></div>
       </section>
@@ -65,7 +68,7 @@ export default function Audit() {
             <button className="flex w-full items-start gap-3 text-left" onClick={() => setOpen(open === e.id ? null : e.id)} disabled={!e.changes?.length}>
               <span className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${tone(e.action)}`}>{e.action.replace('_', ' ')}</span>
               <span className="min-w-0 flex-1"><span className="block break-words font-medium text-slate-900">{e.summary}</span>
-                <span className="block text-xs text-slate-500">{e.userName} ({e.role}){e.branchId ? ` · ${branches.find((b) => b.id === e.branchId)?.name ?? ''}` : ''} · {when(e.at)}</span></span>
+                <span className="block text-xs text-slate-500">{e.userName} ({ROLE_LABEL[e.role as keyof typeof ROLE_LABEL] ?? e.role}){e.branchId ? ` · ${branches.find((b) => b.id === e.branchId)?.name ?? ''}` : ''} · {when(e.at)}</span></span>
               {!!e.changes?.length && <ChevronDown size={16} className={`mt-1 shrink-0 text-slate-400 transition ${open === e.id ? 'rotate-180' : ''}`} />}
             </button>
             {open === e.id && (

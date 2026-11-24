@@ -145,7 +145,7 @@ export function useActiveBranch(): [string, (id: string) => void] {
   const user = useSession();
   const filter = useFilter();
   const setIt = useCallback((id: string) => { set({ branchFilter: id }); try { localStorage.setItem(FILTER_KEY, id); } catch { /* ignore */ } }, []);
-  return [user?.role === 'manager' ? user.branchId ?? 'all' : filter, setIt];
+  return [user && user.role !== 'admin' ? user.branchId ?? 'all' : filter, setIt];
 }
 
 export function useDocs() {
@@ -183,7 +183,7 @@ async function write<T>(fn: () => Promise<T>): Promise<T> {
 }
 const upsert = (docs: DocRecord[], d: DocRecord) => (docs.some((x) => x.id === d.id) ? docs.map((x) => (x.id === d.id ? d : x)) : [d, ...docs]);
 
-export interface DocInput { type: string; branchId?: string; number?: string; status?: string; docDate: string; data: Record<string, string>; items: Record<string, string>[]; rev?: number }
+export interface DocInput { type: string; branchId?: string; number?: string; status?: string; docDate: string; data: Record<string, string>; items: Record<string, string>[]; rev?: number; leadId?: string }
 
 export const createDoc = (input: DocInput) => write(async () => {
   const r = await api<{ doc: DocRecord }>('/api/docs', { body: input });
@@ -200,10 +200,10 @@ export const setDocStatus = (id: string, status: string) => write(async () => {
   set({ docs: upsert(state.docs, r.doc) });
   return r.doc;
 });
-export const softDelete = (id: string) => write(async () => {
-  await api(`/api/docs/${id}`, { method: 'DELETE' });
+export const softDelete = (id: string, reason: string) => write(async () => {
+  await api(`/api/docs/${id}`, { method: 'DELETE', body: { reason } });
   const d = state.docs.find((x) => x.id === id);
-  set({ docs: state.docs.filter((x) => x.id !== id), trash: state.trash && d ? [{ ...d, deletedAt: new Date().toISOString() }, ...state.trash] : state.trash });
+  set({ docs: state.docs.filter((x) => x.id !== id), trash: state.trash && d ? [{ ...d, deletedAt: new Date().toISOString(), deleteReason: reason, deletedByName: state.user?.name ?? '' }, ...state.trash] : state.trash });
 });
 export const restoreDoc = (id: string) => write(async () => {
   const r = await api<{ doc: DocRecord }>(`/api/docs/${id}/restore`, { method: 'POST', body: {} });

@@ -8,7 +8,7 @@ import { api, ApiFail } from '@/lib/api';
 export default function Setup() {
   const router = useRouter();
   const [ok, setOk] = useState<boolean | null>(null);
-  const [f, setF] = useState({ name: '', loginId: 'admin', password: '', companyName: 'Cloud Packers', branchName: 'Head Office', branchCode: 'HO' });
+  const [f, setF] = useState({ name: '', loginId: 'admin', password: '', companyName: 'Cloud Packers' });
   const [errs, setErrs] = useState<Record<string, string>>({});
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -21,7 +21,7 @@ export default function Setup() {
   };
   const field = (k: keyof typeof f, label: string, type = 'text', hint?: string) => (
     <div><label className="label" htmlFor={k}>{label}</label>
-      <input id={k} type={type} className={`input ${errs[k] ? 'border-red-400' : ''}`} value={f[k]} autoCapitalize="none" onChange={(e) => setF({ ...f, [k]: k === 'branchCode' ? e.target.value.toUpperCase() : e.target.value })} required />
+      <input id={k} type={type} className={`input ${errs[k] ? 'border-red-400' : ''}`} value={f[k]} autoCapitalize="none" onChange={(e) => setF({ ...f, [k]: e.target.value })} required />
       {errs[k] ? <p className="mt-1 text-xs text-red-600">{errs[k]}</p> : hint && <p className="mt-1 text-xs text-slate-400">{hint}</p>}</div>
   );
   if (!ok) return <div className="grid min-h-screen place-items-center text-slate-400"><Loader2 className="animate-spin" size={32} /></div>;
@@ -37,7 +37,7 @@ export default function Setup() {
         {field('loginId', 'Admin login ID')}
         {field('password', 'Password', 'password', 'At least 8 characters with a letter and a number')}
         {field('companyName', 'Company name')}
-        <div className="grid grid-cols-3 gap-3"><div className="col-span-2">{field('branchName', 'First branch')}</div>{field('branchCode', 'Code')}</div>
+        <p className="text-xs text-slate-500">After this, add your branches in Branches and a Branch owner (TSM) for each one in Users.</p>
         {error && <p role="alert" className="rounded-lg bg-red-50 p-2.5 text-sm font-medium text-red-700">{error}</p>}
         <button className="btn-primary w-full" disabled={busy}>{busy ? <Loader2 size={18} className="animate-spin" /> : 'Create admin and continue'}</button>
       </form>

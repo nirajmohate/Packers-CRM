@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { jwtVerify } from 'jose';
+import { areaOfPath, canSee, canUseType } from './lib/roles';
 
 // '/s' is the customer survey form opened from a one-time link (no login; the API checks the link)
 const PUBLIC = ['/login', '/setup', '/offline.html', '/s'];
@@ -23,7 +24,13 @@ export async function middleware(req: NextRequest) {
     url.search = pathname === '/' ? '' : `?next=${encodeURIComponent(pathname + req.nextUrl.search)}`;
     return NextResponse.redirect(url);
   }
-  if (pathname.startsWith('/admin') && role !== 'admin') return NextResponse.redirect(new URL('/', req.url));
+  // pages a role may not use go back to the dashboard (the API refuses the data anyway)
+  const who = { role };
+  const area = areaOfPath(pathname);
+  if (area && !canSee(who, area)) return NextResponse.redirect(new URL('/', req.url));
+  if (pathname.startsWith('/admin') && !area) return NextResponse.redirect(new URL('/', req.url));
+  const doc = pathname.match(/^\/docs\/([a-z]+)/);
+  if (doc && !canUseType(who, doc[1])) return NextResponse.redirect(new URL('/', req.url));
   return NextResponse.next();
 }
 

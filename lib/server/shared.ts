@@ -7,6 +7,7 @@ import { Branch } from './models';
 export const DocBody = z.object({
   type: z.string().max(30), branchId: z.string().max(40).optional(), number: z.string().max(80).optional(), status: z.string().max(30).optional(),
   docDate: z.string().max(10), data: z.record(z.string(), z.any()), items: z.array(z.any()).max(300).optional(), rev: z.number().optional(),
+  leadId: z.string().max(40).optional(),
 });
 
 /** Default window: this financial year and the previous one. */
@@ -14,7 +15,7 @@ export const defaultSince = () => `${Number(fyOf(new Date().toISOString().slice(
 
 export async function branchFor(role: string, branchId: string | null | undefined) {
   if (role === 'admin') return null;
-  if (!branchId || !Types.ObjectId.isValid(branchId)) throw new ApiError(422, 'Choose a branch for this manager', { branchId: 'Required' });
+  if (!branchId || !Types.ObjectId.isValid(branchId)) throw new ApiError(422, 'Choose a branch for this user', { branchId: 'Required' });
   const b = await Branch.findById(branchId).lean();
   if (!b || b.active === false) throw new ApiError(422, 'Choose an active branch', { branchId: 'Choose an active branch' });
   return String(b._id);

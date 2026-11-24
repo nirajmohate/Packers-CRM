@@ -90,7 +90,7 @@ export async function importLegacy(user: SessionUser, body: z.infer<typeof Impor
     idMap.set(String(d.id), String(_id));
     numToNew.set(number, String(_id));
     if (cfg.slug === 'bill') bills.push(String(_id));
-    if (Number.isFinite(seq)) { const k = counterKey(cfg.slug, rules, branchId, fy); maxSeq.set(k, Math.max(maxSeq.get(k) ?? 0, seq)); }
+    if (Number.isFinite(seq)) { const k = counterKey(cfg.slug, rules, branchId, fy, d.docDate); maxSeq.set(k, Math.max(maxSeq.get(k) ?? 0, seq)); }
     report.imported++;
   }
 

@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { Search, Wallet } from 'lucide-react';
 import type { DocRecord } from '@/lib/types';
 import { openBills } from '@/lib/ledger';
-import { fmtDate, inr, todayISO } from '@/lib/format';
+import { fmtDate, fmtPhone, inr, todayISO } from '@/lib/format';
 import { num, round2 } from '@/lib/calc';
 import { useDocs, useHomeState, useLiveDocs } from '@/lib/store';
 import PaymentSheet from '@/components/PaymentSheet';
@@ -70,7 +70,7 @@ export default function Payments() {
                       <tr key={b.id} className={late ? 'bg-red-50/70' : i % 2 ? 'bg-slate-50/80' : 'bg-white'}>
                         <td className="px-3 py-2.5 font-semibold text-slate-500">{i + 1}.</td>
                         <td className="px-3 py-2.5"><Link href={`/docs/bill/view?id=${b.id}`} className="block whitespace-nowrap font-bold text-green-700 hover:underline">{b.number}</Link><span className="text-xs font-semibold text-orange-600">{fmtDate(b.docDate)}</span></td>
-                        <td className="max-w-[200px] px-3 py-2.5"><span className="block truncate font-semibold uppercase text-fuchsia-700">{b.data.customerName}</span><span className="text-xs text-slate-500">Phone: {b.data.customerPhone || 'N/A'}</span></td>
+                        <td className="max-w-[200px] px-3 py-2.5"><span className="block truncate font-semibold uppercase text-fuchsia-700">{b.data.customerName}</span><span className="text-xs text-slate-500">Phone: {fmtPhone(b.data.customerPhone) || 'N/A'}</span></td>
                         <td className={`px-3 py-2.5 text-xs ${late ? 'font-bold text-red-600' : 'text-slate-600'}`}>{b.data.dueDate ? `${late ? 'Overdue · ' : ''}${fmtDate(b.data.dueDate)}` : '—'}</td>
                         <td className="whitespace-nowrap px-3 py-2.5 text-right text-slate-700">{inr(info.calc.total)}</td>
                         <td className="whitespace-nowrap px-3 py-2.5 text-right font-bold text-amber-700">{inr(info.calc.balance)}</td>

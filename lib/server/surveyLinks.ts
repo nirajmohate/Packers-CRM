@@ -5,7 +5,7 @@ import type { Row, SessionUser } from '../types';
 import { HOUSEHOLD, PUBLIC_SURVEY_COLUMNS, PUBLIC_SURVEY_FIELDS } from '../config';
 import { cftOf } from '../catalog';
 import { audit } from './audit';
-import { createDoc } from './docs';
+import { createDoc, getDoc, setStatus, updateDoc } from './docs';
 import { ApiError } from './http';
 import { Branch, SurveyLink } from './models';
 import { loadBundle } from './settings';
@@ -33,31 +33,39 @@ export const linkOut = (l: Rec) => ({
 
 /* ---------- staff side (signed in) ---------- */
 export async function createLink(user: SessionUser, body: Rec) {
-  const branchId = user.role === 'manager' ? user.branchId! : short(body.branchId, 40);
+  const branchId = user.role !== 'admin' ? user.branchId! : short(body.branchId, 40);
   const branch = Types.ObjectId.isValid(branchId) ? ((await Branch.findById(branchId).lean()) as Rec | null) : null;
   if (!branch || branch.active === false) throw new ApiError(422, 'Choose a branch for this survey', { branchId: 'Choose a branch' });
   const phone = short(body.customerPhone, 20).replace(/[^\d+]/g, '');
   const prefill = { customerName: short(body.customerName, 120), customerPhone: phone };
   const token = newToken();
+  // the survey appears in the Survey List straight away as "Link sent"; it becomes "Filled by customer" when they send the form
+  const today = new Date(Date.now() + 5.5 * 3600_000).toISOString().slice(0, 10); // date in India
+  const doc = await createDoc(user, { type: 'survey', branchId, status: 'Link sent', docDate: today, data: { ...(prefill.customerName ? { customerName: prefill.customerName } : {}), ...(prefill.customerPhone ? { customerPhone: prefill.customerPhone } : {}) }, items: [] });
   const link = (await SurveyLink.create({
     tokenHash: hashOf(token), branchId, createdBy: user.id, createdByName: user.name, prefill, expiresAt: new Date(Date.now() + LINK_DAYS * DAY),
+    docId: doc.id, docNumber: doc.number,
   })).toObject() as Rec;
   await audit(user, { action: 'create', entity: 'doc', entityId: String(link._id), docType: 'survey', branchId, summary: `Created a survey link${prefill.customerName ? ' for ' + prefill.customerName : ''}` });
   // the secret goes back to the staff member once and is never stored
-  return { link: linkOut(link), path: `/s/${token}` };
+  return { link: linkOut(link), path: `/s/${token}`, doc };
 }
 
 export async function listLinks(user: SessionUser, branch?: string | null) {
-  const q: Rec = user.role === 'manager' ? { branchId: user.branchId } : branch && Types.ObjectId.isValid(branch) ? { branchId: branch } : {};
+  const q: Rec = user.role !== 'admin' ? { branchId: user.branchId } : branch && Types.ObjectId.isValid(branch) ? { branchId: branch } : {};
   return ((await SurveyLink.find(q).sort({ createdAt: -1 }).limit(30).lean()) as Rec[]).map(linkOut);
 }
 
 export async function cancelLink(user: SessionUser, id: string) {
   if (!Types.ObjectId.isValid(id)) throw new ApiError(404, 'Link not found');
-  const l = (await SurveyLink.findOne({ _id: id, ...(user.role === 'manager' ? { branchId: user.branchId } : {}) }).lean()) as Rec | null;
+  const l = (await SurveyLink.findOne({ _id: id, ...(user.role !== 'admin' ? { branchId: user.branchId } : {}) }).lean()) as Rec | null;
   if (!l) throw new ApiError(404, 'Link not found');
   if (l.usedAt) throw new ApiError(400, 'This link was already used, there is nothing to cancel');
   await SurveyLink.updateOne({ _id: id }, { $set: { revokedAt: new Date() } });
+  // its survey (still waiting for the customer) is marked Cancelled
+  if (l.docId) {
+    try { const d = await getDoc(user, l.docId); if (d.status === 'Link sent') await setStatus(user, l.docId, 'Cancelled'); } catch { /* survey deleted meanwhile */ }
+  }
   await audit(user, { action: 'delete', entity: 'doc', entityId: id, docType: 'survey', branchId: l.branchId, summary: 'Cancelled a survey link' });
 }
 
@@ -106,7 +114,13 @@ export async function publicSubmit(token: string, body: Rec) {
   const claim = await SurveyLink.updateOne({ _id: l._id, usedAt: { $exists: false }, revokedAt: { $exists: false }, expiresAt: { $gt: new Date() } }, { $set: { usedAt: new Date() } });
   if (claim.modifiedCount !== 1) throw new ApiError(410, GONE, undefined, 'link_gone');
   try {
-    const doc = await createDoc(who, { type: 'survey', status: 'From customer', docDate: today, data, items });
+    // fill in the survey made when the link was sent (it keeps its number, date and anything staff added);
+    // if staff deleted it meanwhile, a new survey is made instead
+    let existing = null;
+    if (l.docId) { try { existing = await getDoc(who, l.docId); } catch { existing = null; } }
+    const doc = existing
+      ? await updateDoc(who, existing.id, { number: existing.number, docDate: existing.docDate, status: 'Filled by customer', data: { ...existing.data, ...data }, items: items.length ? items : existing.items })
+      : await createDoc(who, { type: 'survey', status: 'Filled by customer', docDate: today, data, items });
     await SurveyLink.updateOne({ _id: l._id }, { $set: { docId: doc.id, docNumber: doc.number } });
     return { number: doc.number };
   } catch (e) {

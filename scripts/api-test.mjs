@@ -23,8 +23,9 @@ r = await anon.post('/api/auth/setup', { name: 'Niraj', loginId: 'admin', passwo
 r = await anon.post('/api/auth/setup', { name: 'Niraj', loginId: 'admin', password: 'Admin@12345', companyName: 'Cloud Packers' }); t('setup creates admin + logs in', r.s === 200 && r.j.user.role === 'admin', JSON.stringify(r.j));
 admin.cookie = anon.cookie; anon.cookie = '';
 r = await anon.post('/api/auth/setup', { name: 'X', loginId: 'x', password: 'Admin@12345' }); t('setup locked after first admin', r.s === 403, r.s);
-r = await admin.get('/api/bootstrap'); t('admin bootstrap ok', r.s === 200 && r.j.branches.length === 1 && r.j.settings.global.name === 'Cloud Packers', JSON.stringify(r.j).slice(0, 200));
-const HO = r.j.branches[0];
+r = await admin.get('/api/bootstrap'); t('admin bootstrap ok', r.s === 200 && r.j.branches.length === 0 && r.j.settings.global.name === 'Cloud Packers', JSON.stringify(r.j).slice(0, 200));
+r = await admin.post('/api/branches', { name: 'Delhi', code: 'DEL', city: 'Delhi' }); t('create first branch', r.s === 200, JSON.stringify(r.j));
+const HO = r.j.branch;
 
 // ---------- branches + managers
 r = await admin.post('/api/branches', { name: 'Pune', code: 'pun', city: 'Pune' }); t('create branch Pune (code uppercased)', r.s === 200 && r.j.branch.code === 'PUN', JSON.stringify(r.j));

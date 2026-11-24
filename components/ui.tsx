@@ -28,13 +28,13 @@ const TONES: Record<string, string> = {
 const STATUS_HI: Record<string, string> = {
   pending: 'बाकी', approved: 'मंज़ूर', rejected: 'नामंज़ूर', unpaid: 'बकाया', partial: 'आधा', paid: 'भुगतान हुआ', cancelled: 'रद्द',
   scheduled: 'तय', completed: 'पूरा', 'from customer': 'ग्राहक से', packed: 'पैक', delivered: 'पहुँचा', booked: 'बुक', 'in transit': 'रास्ते में',
-  draft: 'ड्राफ्ट', sent: 'भेजा', received: 'मिला',
+  draft: 'ड्राफ्ट', sent: 'भेजा', received: 'मिला', 'in process': 'प्रक्रिया में', 'link sent': 'लिंक भेजा', 'filled by customer': 'ग्राहक ने भरा',
 };
 export function StatusBadge({ status }: { status: string }) {
   const s = status.toLowerCase();
-  const tone = s === 'from customer' ? 'violet' : /unpaid|reject|cancel/.test(s) ? 'red'
-    : /paid|approved|completed|delivered|received|packed|issued|dispatched|loaded|final/.test(s) ? 'green'
-    : /pending|partial|draft|loading/.test(s) ? 'amber' : 'blue';
+  // three colours everywhere: red = not paid / rejected / cancelled, green = done, blue = in progress
+  const tone = /unpaid|reject|cancel/.test(s) ? 'red'
+    : /paid|approved|booked|filled|complet|delivered|received|packed|issued|dispatched|loaded|final|done|closed/.test(s) ? 'green' : 'blue';
   const h = STATUS_HI[s];
   return <span className={`inline-block whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ${TONES[tone]}`}>{status}{h && <span lang="hi" className="font-normal opacity-80"> · {h}</span>}</span>;
 }
@@ -69,7 +69,7 @@ export function BranchSelect({ className = '', dark = false }: { className?: str
   const branches = useActiveBranches();
   const [active, setActive] = useActiveBranch();
   const tone = dark ? 'border-white/30 bg-white/10 text-white' : 'border-slate-500 bg-white text-slate-700';
-  if (user?.role === 'manager') {
+  if (user && user.role !== 'admin') {
     return (
       <span className={`flex items-center gap-1.5 ${className}`}>
         <L.MapPin size={15} className={dark ? 'text-white/80' : 'text-slate-500'} />

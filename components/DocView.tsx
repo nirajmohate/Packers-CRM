@@ -4,10 +4,10 @@ import type { Branch, DocRecord, Field, ModuleConfig } from '@/lib/types';
 import { docCalc, receiptsFor } from '@/lib/ledger';
 import { lineAmount, num, summary, validRows } from '@/lib/calc';
 import { readGoods } from '@/lib/goods';
-import { amountInWords, fmtDate, inr } from '@/lib/format';
+import { amountInWords, fmtDate, fmtPhone, inr } from '@/lib/format';
 import { isVisible } from '@/lib/fields';
 
-const show = (f: Field, v: string) => (f.type === 'check' ? (v === '1' ? 'Yes' : 'No') : f.type === 'date' ? fmtDate(v) : f.money ? inr(num(v)) : v);
+const show = (f: Field, v: string) => (f.type === 'check' ? (v === '1' ? 'Yes' : 'No') : f.type === 'tel' ? fmtPhone(v) : f.type === 'date' ? fmtDate(v) : f.money ? inr(num(v)) : v);
 
 export default function DocView({ rec, cfg, docs, home, branch, terms }: { rec: DocRecord; cfg: ModuleConfig; docs: DocRecord[]; home?: string; branch?: Branch; terms: string[] }) {
   const cols = cfg.columns;

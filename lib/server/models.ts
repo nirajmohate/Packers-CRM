@@ -23,7 +23,7 @@ export const User = define('User', new Schema<any>({
   name: { type: String, required: true, trim: true },
   loginId: { type: String, required: true, unique: true, lowercase: true, trim: true },
   passwordHash: { type: String, required: true },
-  role: { type: String, enum: ['admin', 'manager'], required: true },
+  role: { type: String, enum: ['admin', 'manager', 'team'], required: true },
   branchId: { type: String, default: null },
   active: { type: Boolean, default: true },
   mustChangePassword: { type: Boolean, default: false },
@@ -43,6 +43,8 @@ const DocSchema = new Schema<any>({
   branchId: { type: String, required: true },
   deletedAt: Date,
   deletedBy: String,
+  deletedByName: String,
+  deleteReason: String,
   createdBy: String,
   createdByName: String,
   updatedByName: String,
@@ -112,3 +114,31 @@ SurveyLinkSchema.index({ branchId: 1, createdAt: -1 });
 // old links are removed by MongoDB 60 days after they expire
 SurveyLinkSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 60 * 86_400 });
 export const SurveyLink = define('SurveyLink', SurveyLinkSchema);
+
+/** A customer / lead added by hand by a branch owner (or the admin). Always belongs to one branch. */
+const LeadSchema = new Schema<any>({
+  branchId: { type: String, required: true },
+  name: { type: String, default: '' },
+  email: { type: String, default: '' },
+  phone: { type: String, default: '' },
+  leadDate: { type: String, required: true },
+  moveDate: { type: String, default: '' },
+  followUpDate: { type: String, default: '' },
+  fromCity: { type: String, default: '' },
+  toCity: { type: String, default: '' },
+  fromAddress: { type: String, default: '' },
+  toAddress: { type: String, default: '' },
+  leadSource: { type: String, default: '' },
+  leadType: { type: String, default: '' },
+  shiftingType: { type: String, default: '' },
+  itemType: { type: String, default: '' },
+  status: { type: String, default: 'Lead generated' },
+  remarks: { type: String, default: '' },
+  docs: { type: [M], default: [] },
+  createdBy: String,
+  createdByName: String,
+  updatedByName: String,
+}, { ...base, timestamps: true });
+LeadSchema.index({ branchId: 1, leadDate: -1 });
+LeadSchema.index({ branchId: 1, phone: 1 });
+export const Lead = define('Lead', LeadSchema);

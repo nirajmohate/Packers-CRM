@@ -5,16 +5,20 @@ import { audit } from '@/lib/server/audit';
 import { User } from '@/lib/server/models';
 import { userOut } from '@/lib/server/out';
 import { branchFor } from '@/lib/server/shared';
+import { mayManage, oneTeamPerBranch } from '@/lib/server/userAccess';
 
 const Patch = z.object({
-  name: z.string().trim().min(2).max(80), active: z.boolean(), role: z.enum(['admin', 'manager']), branchId: z.string().nullable(), unlock: z.boolean(),
+  name: z.string().trim().min(2).max(80), active: z.boolean(), role: z.enum(['admin', 'manager', 'team']), branchId: z.string().nullable(), unlock: z.boolean(),
 }).partial();
 
-export const PATCH = api({ auth: 'admin' }, async ({ req, user, params }) => {
+export const PATCH = api({ auth: 'user' }, async ({ req, user, params }) => {
   if (!Types.ObjectId.isValid(params.id)) throw new ApiError(404, 'User not found');
   const cur = await User.findById(params.id).lean();
   if (!cur) throw new ApiError(404, 'User not found');
+  mayManage(user, cur as Record<string, unknown>);
   const p = await jsonBody(req, Patch);
+  // a branch owner may rename, switch on/off and unlock their Team account, nothing else
+  if (user.role !== 'admin' && (p.role !== undefined || p.branchId !== undefined)) throw new ApiError(403, 'Only the admin can change a role or branch');
   const self = params.id === user.id;
   const role = p.role ?? (cur.role as string);
   if (self && (p.active === false || (p.role && p.role !== 'admin'))) throw new ApiError(409, 'You cannot deactivate or demote your own account');
@@ -27,6 +31,7 @@ export const PATCH = api({ auth: 'admin' }, async ({ req, user, params }) => {
   if (p.active !== undefined) set.active = p.active;
   if (p.role) set.role = p.role;
   if (p.role || p.branchId !== undefined) set.branchId = await branchFor(role, p.branchId !== undefined ? p.branchId : (cur.branchId as string | null));
+  if (role === 'team' && (p.role || p.branchId !== undefined)) await oneTeamPerBranch((set.branchId as string | null) ?? null, params.id);
   if (p.unlock) { set.failedLogins = 0; unset.lockUntil = ''; }
   const sessionAffected = p.active === false || p.role !== undefined || p.branchId !== undefined;
   await User.updateOne({ _id: params.id }, { $set: set, ...(sessionAffected ? { $inc: { sv: 1 } } : {}), ...(Object.keys(unset).length ? { $unset: unset } : {}) });

@@ -3,7 +3,7 @@ config({ path: '.env.local' });
 config();
 import mongoose from 'mongoose';
 import { connectDb } from '../lib/server/db';
-import { Branch, User } from '../lib/server/models';
+import { User } from '../lib/server/models';
 import { hashPassword, passwordProblem } from '../lib/server/auth';
 
 /** Creates an admin from the command line:  npm run seed:admin -- <login id> <password> */
@@ -16,7 +16,6 @@ async function main() {
   if (problem) throw new Error(`${problem}. Example: npm run seed:admin -- admin MyPass123`);
   await connectDb();
   if (await User.findOne({ loginId })) { console.log(`User "${loginId}" already exists. Nothing to do.`); return; }
-  if (!(await Branch.countDocuments())) await Branch.create({ name: 'Head Office', code: 'HO' });
   await User.create({ name, loginId, passwordHash: await hashPassword(password), role: 'admin', branchId: null, active: true, mustChangePassword: false, sv: 0 });
   console.log(`Admin "${loginId}" created. Sign in at /login.`);
 }

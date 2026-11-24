@@ -96,6 +96,9 @@ export interface DocRecord {
   docDate: string;
   branchId?: string;
   deletedAt?: string;
+  /** why it was deleted and by whom (shown in the recycle bin) */
+  deleteReason?: string;
+  deletedByName?: string;
   createdAt: string;
   updatedAt: string;
   rev?: number;
@@ -151,7 +154,7 @@ export interface SessionUser {
   id: string;
   name: string;
   loginId: string;
-  role: 'admin' | 'manager';
+  role: 'admin' | 'manager' | 'team';
   branchId: string | null;
   mustChangePassword: boolean;
 }

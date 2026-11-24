@@ -2,8 +2,9 @@ import type { Branch, Company, DocRecord, Field, ModuleConfig } from './types';
 import { lineAmount, num, summary, validRows } from './calc';
 import { docCalc } from './ledger';
 import { isVisible } from './fields';
-import { amountInWords, fmtDate, inrPdf } from './format';
+import { amountInWords, fmtDate, fmtPhone, inrPdf } from './format';
 import { readGoods } from './goods';
+import { upiAmount, upiUri } from './upi';
 
 const BRAND: [number, number, number] = [26, 100, 208];
 const LIGHT: [number, number, number] = [227, 240, 254];
@@ -19,6 +20,7 @@ export interface PdfCtx { company: Company; images: PdfImages; branch?: Branch; 
 function fieldValue(f: Field, v: string) {
   if (f.type === 'check') return v === '1' ? 'Yes' : 'No';
   if (f.type === 'date') return fmtDate(v);
+  if (f.type === 'tel') return fmtPhone(v); // +91 98765 43210
   if (f.money) return inrPdf(num(v));
   return v;
 }
@@ -55,7 +57,7 @@ export async function buildPdf(rec: DocRecord, cfg: ModuleConfig, ctx: PdfCtx) {
   const lines = [
     co.tagline,
     addr,
-    [phone && `Mob: ${phone}`, co.email].filter(Boolean).join('   |   '),
+    [phone && `Mob: ${fmtPhone(phone)}`, co.email].filter(Boolean).join('   |   '),
     [co.gstin && `GSTIN: ${co.gstin}`, co.pan && `PAN: ${co.pan}`, branch && `Branch: ${branch.name}`].filter(Boolean).join('   |   '),
   ].filter(Boolean);
   lines.forEach((t) => (pdf.splitTextToSize(t, W - M - tx) as string[]).forEach((s) => { pdf.text(s, tx, ty); ty += 4; }));
@@ -197,7 +199,7 @@ export async function buildPdf(rec: DocRecord, cfg: ModuleConfig, ctx: PdfCtx) {
   /* ----- GST summary ----- */
   const m = calc.money;
   const hideTotal = !!m?.hideTotal; // quotation: "Total amount in PDF: Hide"
-  if (m && m.gst > 0 && !hideTotal) {
+  if (m && m.gst > 0 && !hideTotal && m.gstMode !== 'rateOnly') { // "GST % Show & GST Charge Hide" prints no GST amounts
     ensure(10 + m.tax.length * 6);
     const head = m.igst ? ['Tax rate', 'Taxable value', 'IGST', 'Total tax'] : ['Tax rate', 'Taxable value', 'CGST', 'SGST', 'Total tax'];
     const body = m.tax.filter((t) => t.rate > 0).map((t) => (m.igst
@@ -214,13 +216,10 @@ export async function buildPdf(rec: DocRecord, cfg: ModuleConfig, ctx: PdfCtx) {
   /* ----- amounts, with bank details and UPI QR in the free column on the left ----- */
   const totalLabel = cfg.slug === 'receipt' ? 'Amount received' : 'Total';
   const amountLines = hideTotal ? [] : calc.lines.length ? calc.lines : calc.total > 0 ? [{ label: totalLabel, value: calc.total, bold: true }] : [];
-  let qrAmount = 0;
-  if (m) {
-    if (rec.type === 'bill') qrAmount = calc.status === 'Cancelled' ? 0 : m.balance;
-    else if (cfg.slug === 'proforma') qrAmount = m.adv > 0 ? m.adv : m.total;
-    else qrAmount = m.adv;
-  }
-  const showQr = opts.qr && cfg.qr && !!co.upi && qrAmount > 0;
+  // amount due after discount, advance and payments; null when the UPI ID is missing or not valid
+  const qrAmount = upiAmount(rec, cfg, m, calc.status);
+  const qrUri = hideTotal ? null : upiUri(co, qrAmount, rec.number);
+  const showQr = opts.qr && !!qrUri;
   const bankLines = cfg.bank
     ? [co.bankName && `Bank: ${co.bankName}`, co.accountName && `A/c name: ${co.accountName}`, co.accountNo && `A/c no: ${co.accountNo}`, co.ifsc && `IFSC: ${co.ifsc}`, co.upi && `UPI: ${co.upi}`].filter(Boolean) as string[]
     : [];
@@ -253,8 +252,7 @@ export async function buildPdf(rec: DocRecord, cfg: ModuleConfig, ctx: PdfCtx) {
       if (showQr) {
         try {
           const QR = (await import('qrcode')).default;
-          const uri = `upi://pay?pa=${encodeURIComponent(co.upi)}&pn=${encodeURIComponent(co.name)}&am=${qrAmount.toFixed(2)}&cu=INR&tn=${encodeURIComponent(rec.number)}`;
-          const img = await QR.toDataURL(uri, { margin: 1, width: 280 });
+          const img = await QR.toDataURL(qrUri!, { margin: 1, width: 280, errorCorrectionLevel: 'M' });
           const qx = M + leftW - 28;
           pdf.addImage(img, 'PNG', qx, top - 3, 28, 28);
           pdf.setFont('helvetica', 'normal').setFontSize(7).setTextColor(70);

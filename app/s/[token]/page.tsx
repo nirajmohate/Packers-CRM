@@ -21,10 +21,16 @@ function Input({ f, value, error, onChange }: { f: Field; value: string; error?:
   if (f.type === 'textarea') return <AutoTextarea {...common} minRows={2} maxLength={1000} className={cls} value={value} placeholder={f.placeholder} onChange={(e) => onChange(e.target.value)} />;
   if (f.type === 'select')
     return <select {...common} className={cls} value={value} onChange={(e) => onChange(e.target.value)}><option value="">Select</option>{f.options?.map((o) => <option key={o}>{o}</option>)}</select>;
+  if (f.type === 'tel')
+    return (
+      <div className="relative">
+        <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center border-r border-slate-300 pl-3 pr-2 text-base font-semibold text-slate-600">+91</span>
+        <input {...common} className={`${cls} pl-16`} value={value} placeholder="98765 43210" maxLength={16} type="tel" inputMode="tel" autoComplete="tel-national" onChange={(e) => onChange(e.target.value)} />
+      </div>
+    );
   return (
-    <input {...common} className={cls} value={value} placeholder={f.placeholder} maxLength={f.type === 'tel' ? 15 : 200}
-      type={f.type === 'date' ? 'date' : f.type === 'tel' ? 'tel' : f.validate === 'email' ? 'email' : 'text'}
-      inputMode={f.type === 'tel' ? 'tel' : undefined} onChange={(e) => onChange(e.target.value)} />
+    <input {...common} className={cls} value={value} placeholder={f.placeholder} maxLength={200}
+      type={f.type === 'date' ? 'date' : f.validate === 'email' ? 'email' : 'text'} onChange={(e) => onChange(e.target.value)} />
   );
 }
 

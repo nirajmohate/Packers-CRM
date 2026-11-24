@@ -1,5 +1,65 @@
 # Cloud Packers CRM: Stage 2 (database + login)
 
+## What changed in 0.10.0
+
+**Three kinds of users**
+- *Admin*: everything, all branches.
+- *Branch owner (TSM)*: their own branch only. Creates and manages that branch's Team account (name, password, deactivate, unlock) from **My team**. Sees everything the team saves.
+- *Team (executives)*: one shared login per branch, usable on many phones at the same time. Can make, edit and change the status of Quotation, Survey list, Packing list, LR / Bilty and Vehicle condition in its own branch only. It cannot delete, and cannot open bills, receipts, payments, reports, customers, the recycle bin, users or settings. These rules are checked on the server for every request (pages, lists, sync, PDFs, audit history), not only hidden in the menu.
+- Only one Team account per branch (the server refuses a second). Its password is set by the branch owner or admin and is not forced to change; resetting it signs out every phone.
+- Every sign-in (and failed sign-in) is in the Audit log with the role, branch, browser/phone and network. The Audit log can be filtered by *Who* (Admin / Branch owner / Team) and *Area* (sign-ins, documents, customers…).
+
+**Customers / leads**
+- Customers page has two tabs: *Leads & customers* (added by hand) and *From documents* (built from saved documents, as before).
+- Add customer: name, mobile, email, date, from, to, lead source, lead type (Hot/Warm/Cold), shifting type, item type, status, shifting date, follow-up date, addresses, remarks. Statuses: Lead generated, Contacted, Follow-up, Quotation sent, Converted, Not responded, Lost.
+- Filters: date range, branch (admin), status chips with counts, source, lead type, shifting type, item type, search, sort. Export to Excel (with a *Monthly summary* sheet) or CSV.
+- Monthly leads vs converted, per branch for the admin.
+- ⋯ on a customer: Create quotation / survey / bill (details are filled in), Edit, WhatsApp, Delete. Making a quotation moves the lead to *Quotation sent*, a bill to *Converted* (never backwards).
+- Every new document form has **Fill from a saved customer**: type a name or mobile and pick a lead or a past customer; only empty boxes are filled. Adding a customer first is never required.
+- Excel/CSV exports neutralise cells that start with = + - @ so a typed name can never run as a formula.
+
+**Head office removed**: first-run setup no longer creates a "Head Office" branch. Add your branches in Branches. An existing unused "Head Office" can be deleted in Branches (or deactivated if it already has documents).
+
+## What changed in 0.9.0
+- **Six GST choices** on Quotation and Bill (`gstChoice` in `lib/calc.ts`):
+  GST Charge Show In Quotation/Bill (added, CGST+SGST or IGST shown) · GST % Show & GST Charge Hide (added, only the
+  rate shown, no GST table on the PDF) · Without GST (none) · GST Exempted (none, "GST exempted" printed) · GST Extra
+  (not in the total, shown below it) · GST Included in Subtotal (amounts already contain GST; taxable value and GST are
+  worked out from them and always add up exactly). Old "GST Charge Hide" = Without GST.
+- **Statuses** start at **Pending**, then **In process**, then the finishing ones (quotation: Approved, Booked,
+  Rejected, Cancelled; survey: Link sent, Filled by customer, Completed, Cancelled; packing: Packed, Delivered…).
+  Bill (Unpaid / Partial / Paid / Cancelled) and Money Receipt still follow the money.
+- **Survey links**: making a link adds the survey to the Survey List at once as **Link sent**; when the customer sends
+  the form, that same survey is filled in and becomes **Filled by customer**; cancelling the link marks it Cancelled.
+- **Smaller text and less empty space**: base size 15px (14.5px on computers), tighter page, cards, hero and sidebar.
+  Text boxes stay 16px on phones so iPhones do not zoom in.
+- Checked: 55 calculation tests (all GST choices, discount, surcharge, insurance, round off, IGST, reverse charge,
+  bill advance + payments, payment QR amount, old-style quotations, survey → quotation → bill copying, numbering, +91),
+  every page at 320 / 375 / 1366 px wide with no sideways overflow and no script errors.
+
+## What changed in 0.8.0
+- **Delete from the list** (⋯ menu) and from the document page, in two steps: write a reason, then "Are you sure?".
+  The reason, who deleted it and when are shown in the Recycle bin (new fields `deleteReason`, `deletedByName`;
+  the server refuses a delete without a reason).
+- **Status dropdown in every list and on the document page** (not on the create form). A confirmation popup comes first.
+  Bills: "Paid" / "Partial" opens Record payment (a money receipt is saved, so totals stay right), "Cancelled" cancels,
+  a cancelled bill can be made active again; "Unpaid" explains that the receipts must be deleted first.
+  Rows are coloured: green = done / paid / approved, red = unpaid / rejected / cancelled, blue = in progress.
+- **Dashboard date filter** like Search Console: Today, 7 days, 28 days, 3 months, More (12 months, this / last
+  financial year, all time, custom dates). It drives the five numbers and the chart, for every branch and the admin.
+  Older documents are fetched only when a longer period is picked. The choice is remembered on the device.
+- **Chart**: three bars per day / week / month: Quotation (red), Bill (blue), Paid (green), with totals above.
+- **Upcoming packing** next to the chart: the next 30 days from the packing date (or moving date) on quotations
+  (not rejected), packing lists and surveys; the same customer on the same day shows once.
+- **+91** shown in front of every mobile box and printed as "+91 98765 43210" on the PDF, document page and lists
+  (numbers are still saved as 10 digits; pasting "+91…" works).
+- **Payment QR**: "Scan to pay" card on bills (and the PDF) for exactly the balance due after discount, advance and
+  payments received. Needs the company UPI ID in Settings › Bank details. The UPI ID is checked, the name and note are
+  cleaned, and nothing is shown when nothing is due or the bill is cancelled. Quotations have no payment QR.
+- **Daily numbering**: new default `{PREFIX}/{BR}/{DATE}/{NN}` → QTN/DEL/23-11-26/01 (the running number restarts
+  every day, per branch and document type, using the document date). Settings saved with the old default switch
+  automatically; a custom format you typed is kept. Existing documents keep their numbers.
+
 ## What changed in 0.7.0
 - **Quotation and Bill have new boxes**, the same as the format your staff already use:
   - Quotation: Quotation details, Move from, Move to (country, state, city, pincode, address, floor, lift), Payment details,
@@ -82,7 +142,7 @@
 
 
 Next.js 14 (App Router) + TypeScript + Tailwind CSS + MongoDB (Mongoose). One project: the API lives in `app/api`.
-Mobile-first. Admin + branch managers, branch-separated data, numbering per branch, audit log, files in the database.
+Mobile-first. Admin, branch owners (TSM) and one shared Team account per branch, branch-separated data, numbering per branch, audit log, files in the database.
 
 ## 1. What you need
 - **Node.js 20.19 or newer** (22 LTS is best). Older versions fail because Mongoose 9 needs it. Check with `node -v`.
@@ -128,7 +188,8 @@ If one is still missing: `npm install jose bcryptjs mongoose zod dotenv`
 ## 3. How it works
 **Roles**
 - *Admin*: all branches. Creates branches and managers, resets passwords, edits settings (company-wide or per branch), opens the audit log, imports the old browser data, downloads a backup, deletes permanently.
-- *Branch manager*: sees and edits only their own branch. Creates documents, records payments, deletes to the recycle bin and restores. Cannot open Settings, Users, Branches, Audit or import.
+- *Branch owner (TSM)*: sees and edits only their own branch. Creates documents, records payments, deletes to the recycle bin and restores, manages leads and the branch Team account. Cannot open Settings, Branches, Audit or import.
+- *Team (executives)*: shared branch login for Quotation, Survey, Packing list, LR / Bilty and Vehicle condition only; no delete.
 - The server checks the role and branch on **every** request. Hiding a button is never the only protection.
 
 **Login**: login ID + password. Passwords are hashed (bcrypt). A temporary password (new user or admin reset) must be changed at first sign-in. Five wrong passwords lock the account for 15 minutes (admin can unlock). Deactivating a user, changing their branch or resetting their password signs them out immediately.

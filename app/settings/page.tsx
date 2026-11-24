@@ -134,7 +134,7 @@ export default function Settings() {
   );
 
   const sampleBranch = branches.find((b) => b.id === scope) ?? branches[0];
-  const preview = hasSeqToken(rules.numberFormat) ? formatNumber(rules.numberFormat, { prefix: 'INV', br: sampleBranch?.code || 'HO', fy: fyOf(todayISO()), seq: 12 }) : '-';
+  const preview = hasSeqToken(rules.numberFormat) ? formatNumber(rules.numberFormat, { prefix: 'QTN', br: sampleBranch?.code || 'BR', fy: fyOf(todayISO()), seq: 1, date: todayISO() }) : '-';
   const termMod = MODULES.find((m) => m.slug === termSlug)!;
   const shownTerms = terms[termSlug] ?? (ownTerms(termSlug) ? (ownTerms(termSlug) as string[]).join('\n') : isGlobal ? termMod.terms.join('\n') : inheritedTerms(termSlug));
   const termsOverridden = !isGlobal && (terms[termSlug] !== undefined || !!ownTerms(termSlug));
@@ -188,13 +188,14 @@ export default function Settings() {
               <label className="label">Number format</label>
               <input data-err={errs.numberFormat ? '1' : undefined} className={`input font-mono ${errs.numberFormat ? 'border-red-400' : ''}`} value={rules.numberFormat} onChange={(e) => setRules({ ...rules, numberFormat: e.target.value })} />
               {err('numberFormat')}
-              <p className="mt-1 text-xs text-slate-500">Example bill number: <b className="font-mono text-slate-800">{preview}</b></p>
-              <p className="mt-1 text-xs text-slate-400">{'{PREFIX}'} document code · {'{BR}'} branch code · {'{FY}'} financial year · {'{YY}'} start year · {'{NNNN}'} running number</p>
+              <p className="mt-1 text-xs text-slate-500">Example quotation number: <b className="font-mono text-slate-800">{preview}</b></p>
+              <p className="mt-1 text-xs text-slate-400">{'{PREFIX}'} document code · {'{BR}'} branch code · {'{DATE}'} document date (23-11-26) · {'{FY}'} financial year · {'{YY}'} start year · {'{NN}'} / {'{NNNN}'} running number. With {'{DATE}'} the running number starts again at 01 every day.</p>
             </div>
             <Toggle label="Separate running numbers for each branch" checked={rules.numberPerBranch} onChange={(v) => setRules({ ...rules, numberPerBranch: v })} />
             <Toggle label="Restart numbers every financial year (April)" checked={rules.numberFyReset} onChange={(v) => setRules({ ...rules, numberFyReset: v })} />
             <div className="flex flex-wrap gap-2">
-              <button className="btn-ghost min-h-[38px] text-xs" onClick={() => setRules({ ...rules, numberFormat: '{PREFIX}/{BR}/{FY}/{NNNN}' })}>CP/PUN/2026-27/0001 style</button>
+              <button className="btn-ghost min-h-[38px] text-xs" onClick={() => setRules({ ...rules, numberFormat: '{PREFIX}/{BR}/{DATE}/{NN}' })}>QTN/DEL/23-11-26/01 style (daily)</button>
+              <button className="btn-ghost min-h-[38px] text-xs" onClick={() => setRules({ ...rules, numberFormat: '{PREFIX}/{BR}/{FY}/{NNNN}' })}>QTN/DEL/2026-27/0001 style</button>
               <button className="btn-ghost min-h-[38px] text-xs" onClick={() => setRules({ ...rules, numberFormat: '{PREFIX}-{BR}-{NNNN}' })}>INV-PUN-0001 style</button>
             </div>
             <p className="text-xs text-amber-700">Changing this only affects documents created from now on. Numbers are assigned by the server and are never reused.</p>

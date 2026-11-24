@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { api, ApiError, jsonBody } from '@/lib/server/http';
-import { audit } from '@/lib/server/audit';
+import { audit, deviceOf } from '@/lib/server/audit';
 import { checkPassword, DUMMY_HASH, setSessionCookie, signSession, toSessionUser, tooManyAttempts } from '@/lib/server/auth';
 import { User } from '@/lib/server/models';
 
@@ -18,7 +18,7 @@ export const POST = api({ auth: 'none' }, async ({ req }) => {
   const u = await User.findOne({ loginId: id }).lean();
   const ok = await checkPassword(password, (u?.passwordHash as string) ?? DUMMY_HASH);
   const wrong = new ApiError(401, 'Wrong login ID or password');
-  if (!u || !u.active) { await audit(null, { action: 'login_failed', entity: 'auth', summary: `Failed sign-in for "${id}"` }, id); throw wrong; }
+  if (!u || !u.active) { await audit(null, { action: 'login_failed', entity: 'auth', summary: `Failed sign-in for "${id}" · ${deviceOf(req.headers)}` }, id); throw wrong; }
   if (u.lockUntil && new Date(u.lockUntil as Date).getTime() > Date.now()) throw new ApiError(423, 'Too many wrong passwords. This account is locked for a few minutes.');
   if (!ok) {
     const n = ((u.failedLogins as number) ?? 0) + 1;
@@ -28,7 +28,7 @@ export const POST = api({ auth: 'none' }, async ({ req }) => {
   }
   await User.updateOne({ _id: u._id }, { $set: { failedLogins: 0, lastLoginAt: new Date() }, $unset: { lockUntil: '' } });
   const user = toSessionUser(u);
-  await audit(user, { action: 'login', entity: 'auth', summary: 'Signed in' });
+  await audit(user, { action: 'login', entity: 'auth', branchId: user.branchId ?? undefined, summary: `Signed in${user.role === 'team' ? ' (Team account)' : ''} · ${deviceOf(req.headers)}` });
   const res = NextResponse.json({ user });
   setSessionCookie(res, req, await signSession({ id: user.id, role: user.role, branchId: user.branchId, sv: (u.sv as number) ?? 0 }));
   return res;

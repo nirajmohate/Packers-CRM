@@ -2,8 +2,10 @@
 import { Types } from 'mongoose';
 import type { AuditChange, Company, DocRecord, ModuleConfig, Row, SessionUser } from '../types';
 import { BY_SLUG, MODULES } from '../config';
+import { linkLeadToDoc } from './leads';
+import { TEAM_TYPES, canDelete, canUseType, isBranchUser, isTeam } from '../roles';
 import { billInfo } from '../ledger';
-import { fyOf, formatNumber } from '../numbering';
+import { fyOf, formatNumber, isDaily } from '../numbering';
 import { cleanData, validateDoc } from '../validateDoc';
 import { GOODS_KEY, cleanGoods } from '../goods';
 import { audit } from './audit';
@@ -23,15 +25,26 @@ export const docOut = (d: Rec): DocRecord => ({
   id: String(d._id), type: d.type, number: d.number, seq: d.seq, fy: d.fy, status: d.status, docDate: d.docDate,
   branchId: d.branchId, deletedAt: iso(d.deletedAt), createdAt: iso(d.createdAt) as string, updatedAt: iso(d.updatedAt) as string,
   rev: d.rev, createdByName: d.createdByName, updatedByName: d.updatedByName, data: d.data ?? {}, items: d.items ?? [],
+  ...(d.deletedAt ? { deleteReason: d.deleteReason ?? '', deletedByName: d.deletedByName ?? '' } : {}),
 });
 
-const scopeOf = (u: SessionUser): Rec => (u.role === 'manager' ? { branchId: u.branchId } : {});
+/** branch owners and the team see only their own branch */
+const scopeOf = (u: SessionUser): Rec => (isBranchUser(u) ? { branchId: u.branchId } : {});
+/** the team sees only its five document types; everyone else every type still in use */
+const typesFor = (u: SessionUser): Rec => (isTeam(u) ? { $in: TEAM_TYPES } : IN_USE);
+/** stops the team from creating or changing other document types, and from deleting */
+function mayUse(user: SessionUser, type: string) {
+  if (!canUseType(user, type)) throw new ApiError(403, 'Your account cannot use this document type');
+}
+function mayDelete(user: SessionUser) {
+  if (!canDelete(user)) throw new ApiError(403, 'Your account cannot delete documents. Ask the branch owner.');
+}
 const validDate = (s: unknown): s is string => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s));
 const bad = (msg: string, fields: Record<string, string>) => new ApiError(422, msg, fields);
 
 async function loadDoc(user: SessionUser, id: string, deleted = false): Promise<Rec> {
   if (!Types.ObjectId.isValid(id)) throw new ApiError(404, 'Document not found');
-  const d = await Doc.findOne({ _id: id, type: IN_USE, ...scopeOf(user), ...(deleted ? { deletedAt: { $exists: true } } : live) }).lean();
+  const d = await Doc.findOne({ _id: id, type: typesFor(user), ...scopeOf(user), ...(deleted ? { deletedAt: { $exists: true } } : live) }).lean();
   if (!d) throw new ApiError(404, 'Document not found');
   return d as Rec;
 }
@@ -78,20 +91,21 @@ async function nextSeq(key: string): Promise<number> {
   }
   throw new ApiError(503, 'Numbering is busy, please try again');
 }
-export const counterKey = (slug: string, rules: Pick<Company, 'numberPerBranch' | 'numberFyReset'>, branchId: string, fy: string) =>
-  `${slug}|${rules.numberPerBranch ? branchId : '-'}|${rules.numberFyReset ? fy : '-'}`;
+export const counterKey = (slug: string, rules: Pick<Company, 'numberPerBranch' | 'numberFyReset' | 'numberFormat'>, branchId: string, fy: string, date: string) =>
+  `${slug}|${rules.numberPerBranch ? branchId : '-'}|${rules.numberFyReset ? fy : '-'}${isDaily(rules.numberFormat) ? '|' + date.slice(0, 10) : ''}`;
 
 export async function previewNumber(user: SessionUser, type: string, branchId: string | undefined, date: string) {
   const cfg = BY_SLUG[type];
   if (!cfg) throw new ApiError(400, 'Unknown document type');
   if (!validDate(date)) throw new ApiError(400, 'Invalid date');
-  const bid = user.role === 'manager' ? user.branchId! : branchId;
+  mayUse(user, cfg.slug);
+  const bid = isBranchUser(user) ? user.branchId! : branchId;
   const branch = bid && Types.ObjectId.isValid(bid) ? ((await Branch.findById(bid).lean()) as Rec | null) : null;
   if (!branch) throw new ApiError(400, 'Choose a branch');
   const rules = (await loadBundle()).global;
   const fy = fyOf(date);
-  const c = (await Counter.findById(counterKey(cfg.slug, rules, String(branch._id), fy)).lean()) as Rec | null;
-  return { number: formatNumber(rules.numberFormat, { prefix: cfg.prefix, br: branch.code, fy, seq: (c?.seq ?? 0) + 1 }) };
+  const c = (await Counter.findById(counterKey(cfg.slug, rules, String(branch._id), fy, date)).lean()) as Rec | null;
+  return { number: formatNumber(rules.numberFormat, { prefix: cfg.prefix, br: branch.code, fy, seq: (c?.seq ?? 0) + 1, date }) };
 }
 
 /* ---------- bills and their receipts ---------- */
@@ -144,7 +158,8 @@ async function validated(cfg: ModuleConfig, input: Rec, branchId: string, self?:
 export async function createDoc(user: SessionUser, input: Rec) {
   const cfg = BY_SLUG[String(input.type)];
   if (!cfg) throw new ApiError(400, 'Unknown document type');
-  const branchId = user.role === 'manager' ? user.branchId! : String(input.branchId ?? '');
+  mayUse(user, cfg.slug);
+  const branchId = isBranchUser(user) ? user.branchId! : String(input.branchId ?? '');
   const branch = Types.ObjectId.isValid(branchId) ? ((await Branch.findById(branchId).lean()) as Rec | null) : null;
   if (!branch || branch.active === false) throw bad('Please choose an active branch', { branchId: 'Choose a branch' });
   const { data, items } = await validated(cfg, input, branchId);
@@ -162,8 +177,8 @@ export async function createDoc(user: SessionUser, input: Rec) {
     }
   } else {
     for (let i = 0; i < 25 && !created; i++) {
-      const seq = await nextSeq(counterKey(cfg.slug, rules, branchId, fy));
-      const number = formatNumber(rules.numberFormat, { prefix: cfg.prefix, br: branch.code, fy, seq });
+      const seq = await nextSeq(counterKey(cfg.slug, rules, branchId, fy, input.docDate));
+      const number = formatNumber(rules.numberFormat, { prefix: cfg.prefix, br: branch.code, fy, seq, date: input.docDate });
       try { created = (await Doc.create({ ...base, number, seq, fy })).toObject(); } catch (e) { if ((e as { code?: number }).code !== 11000) throw e; }
     }
     if (!created) throw new ApiError(503, 'Could not assign a document number, please try again');
@@ -172,6 +187,7 @@ export async function createDoc(user: SessionUser, input: Rec) {
   if (cfg.slug === 'bill') await refreshBillMeta(String(made._id));
   if (cfg.slug === 'receipt') await refreshBillMeta(data.againstId);
   await audit(user, { action: 'create', entity: 'doc', entityId: String(made._id), docType: cfg.slug, docNumber: made.number, branchId, summary: `Created ${cfg.title} ${made.number}` });
+  if (input.leadId) await linkLeadToDoc(user, input.leadId, { id: String(made._id), type: cfg.slug, number: String(made.number), branchId });
   return docOut((await Doc.findById(made._id).lean()) as Rec);
 }
 
@@ -244,16 +260,21 @@ export async function setStatus(user: SessionUser, id: string, status: string) {
 }
 
 /* ---------- delete / restore / purge ---------- */
-export async function softDelete(user: SessionUser, id: string) {
+export async function softDelete(user: SessionUser, id: string, reasonIn: unknown) {
+  mayDelete(user);
+  // a reason is required, so the recycle bin always says why something was removed
+  const reason = typeof reasonIn === 'string' ? reasonIn.replace(/\s+/g, ' ').trim().slice(0, 300) : '';
+  if (reason.length < 3) throw new ApiError(422, 'Please write why this is being deleted', { reason: 'Write a reason (at least 3 letters)' });
   const cur = await loadDoc(user, id);
-  await Doc.updateOne({ _id: id }, { $set: { deletedAt: new Date(), deletedBy: user.id, updatedByName: user.name }, $inc: { rev: 1 } });
+  await Doc.updateOne({ _id: id }, { $set: { deletedAt: new Date(), deletedBy: user.id, deletedByName: user.name, deleteReason: reason, updatedByName: user.name }, $inc: { rev: 1 } });
   if (cur.type === 'receipt') await refreshBillMeta(cur.data?.againstId);
-  await audit(user, { action: 'delete', entity: 'doc', entityId: id, docType: cur.type, docNumber: cur.number, branchId: cur.branchId, summary: `Moved ${BY_SLUG[cur.type]?.title} ${cur.number} to the recycle bin` });
+  await audit(user, { action: 'delete', entity: 'doc', entityId: id, docType: cur.type, docNumber: cur.number, branchId: cur.branchId, summary: `Moved ${BY_SLUG[cur.type]?.title} ${cur.number} to the recycle bin. Reason: ${reason}` });
 }
 
 export async function restoreDoc(user: SessionUser, id: string) {
+  mayDelete(user);
   const cur = await loadDoc(user, id, true);
-  await Doc.updateOne({ _id: id }, { $unset: { deletedAt: '', deletedBy: '' }, $set: { updatedByName: user.name }, $inc: { rev: 1 } });
+  await Doc.updateOne({ _id: id }, { $unset: { deletedAt: '', deletedBy: '', deletedByName: '', deleteReason: '' }, $set: { updatedByName: user.name }, $inc: { rev: 1 } });
   if (cur.type === 'receipt') await refreshBillMeta(cur.data?.againstId);
   if (cur.type === 'bill') await refreshBillMeta(id);
   await audit(user, { action: 'restore', entity: 'doc', entityId: id, docType: cur.type, docNumber: cur.number, branchId: cur.branchId, summary: `Restored ${BY_SLUG[cur.type]?.title} ${cur.number}` });
@@ -261,6 +282,7 @@ export async function restoreDoc(user: SessionUser, id: string) {
 }
 
 export async function purgeDoc(user: SessionUser, id: string) {
+  mayDelete(user);
   const cur = await loadDoc(user, id, true);
   await Doc.deleteOne({ _id: id });
   await audit(user, { action: 'purge', entity: 'doc', entityId: id, docType: cur.type, docNumber: cur.number, branchId: cur.branchId, summary: `Permanently deleted ${BY_SLUG[cur.type]?.title} ${cur.number}` });
@@ -279,10 +301,11 @@ export async function emptyTrash(user: SessionUser, olderThanDays = 0) {
 /* ---------- reading ---------- */
 export async function listDocs(user: SessionUser, opts: { since: string; branchId?: string }) {
   if (!validDate(opts.since)) throw new ApiError(400, 'Invalid date');
-  const base: Rec = { ...scopeOf(user), ...live, type: IN_USE };
+  const base: Rec = { ...scopeOf(user), ...live, type: typesFor(user) };
   if (user.role === 'admin' && opts.branchId && Types.ObjectId.isValid(opts.branchId)) base.branchId = opts.branchId;
   const inWindow = (await Doc.find({ ...base, docDate: { $gte: opts.since } }).sort({ docDate: -1, createdAt: -1 }).limit(60_000).lean()) as Rec[];
   // unpaid bills older than the window (and their receipts) are always included so balances stay correct
+  if (isTeam(user)) return inWindow.map(docOut); // the team has no bills or receipts
   const olderBills = (await Doc.find({ ...base, type: 'bill', docDate: { $lt: opts.since }, 'meta.balance': { $gt: 0 }, status: { $ne: 'Cancelled' } }).lean()) as Rec[];
   const ids = olderBills.map((b) => String(b._id));
   const olderReceipts = ids.length ? ((await Doc.find({ ...base, type: 'receipt', 'data.againstId': { $in: ids }, docDate: { $lt: opts.since } }).lean()) as Rec[]) : [];
@@ -290,9 +313,10 @@ export async function listDocs(user: SessionUser, opts: { since: string; branchI
 }
 
 export async function listTrash(user: SessionUser) {
+  if (isTeam(user)) throw new ApiError(403, 'Your account cannot open the recycle bin');
   if (user.role === 'admin') await emptyTrash(user, TRASH_DAYS);
   const since = new Date(Date.now() - TRASH_DAYS * DAY);
-  const rows = (await Doc.find({ ...scopeOf(user), type: IN_USE, deletedAt: { $gte: since } }).sort({ deletedAt: -1 }).limit(500).lean()) as Rec[];
+  const rows = (await Doc.find({ ...scopeOf(user), type: typesFor(user), deletedAt: { $gte: since } }).sort({ deletedAt: -1 }).limit(500).lean()) as Rec[];
   return rows.map(docOut);
 }
 
@@ -303,7 +327,7 @@ export async function listTrash(user: SessionUser) {
  */
 export const CHANGES_LIMIT = 2000;
 export async function listChanges(user: SessionUser, after: Date) {
-  const rows = (await Doc.find({ ...scopeOf(user), type: IN_USE, updatedAt: { $gt: after } })
+  const rows = (await Doc.find({ ...scopeOf(user), type: typesFor(user), updatedAt: { $gt: after } })
     .sort({ updatedAt: 1 }).limit(CHANGES_LIMIT + 1).lean()) as Rec[];
   // too many changes at once (for example a big import): the app does a full reload instead
   if (rows.length > CHANGES_LIMIT) return { full: true as const };

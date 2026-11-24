@@ -3,6 +3,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AlertCircle, ArrowLeft, ChevronDown } from 'lucide-react';
 import ItemsEditor from './ItemsEditor';
+import CustomerPicker, { type Picked } from './CustomerPicker';
+import { leadsChanged, useLeads } from '@/lib/leadStore';
+import { canSee } from '@/lib/roles';
 import { AutoTextarea, FieldLabel, Hi } from './ui';
 import type { DocRecord, Field, ModuleConfig, Row } from '@/lib/types';
 import { GST_RATES, HOUSEHOLD, SERVICE_PRESETS, suggestionNames } from '@/lib/config';
@@ -62,11 +65,20 @@ function FieldInput({ f, value, error, bills, onChange, onBill }: { f: Field; va
         {f.options?.map((o) => <option key={o}>{o}</option>)}
       </select>
     );
+  if (f.type === 'tel')
+    // +91 is shown in front; the number itself is saved as 10 digits and printed as +91 98765 43210
+    return (
+      <div className="relative">
+        <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center border-r border-slate-300 pl-3 pr-2 text-base font-semibold text-slate-600">+91</span>
+        <input {...common} className={`${cls} pl-16`} value={value} placeholder={f.placeholder ?? '98765 43210'} readOnly={f.readOnly} maxLength={16} type="tel" inputMode="tel" autoComplete="tel-national"
+          onChange={(e) => { const v = e.target.value; const d = v.replace(/\D/g, ''); onChange(/^\s*(\+|0{0,2})91/.test(v) && d.length === 12 ? d.slice(2) : v); }} />
+      </div>
+    );
   return (
     <input
       {...common} className={cls} value={value} placeholder={f.placeholder} readOnly={f.readOnly} list={f.suggestions ? 'sug-' + f.key : undefined} maxLength={f.type === 'number' ? 16 : 500}
-      type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : f.type === 'time' ? 'time' : f.type === 'tel' ? 'tel' : 'text'}
-      inputMode={f.type === 'number' ? 'decimal' : f.type === 'tel' ? 'tel' : f.validate === 'email' ? 'email' : undefined}
+      type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : f.type === 'time' ? 'time' : 'text'}
+      inputMode={f.type === 'number' ? 'decimal' : f.validate === 'email' ? 'email' : undefined}
       autoCapitalize={f.upper ? 'characters' : undefined}
       step={f.type === 'number' ? 'any' : undefined} min={f.type === 'number' ? f.min : undefined} max={f.type === 'number' ? f.max : undefined}
       onChange={(e) => onChange(f.upper ? e.target.value.toUpperCase() : e.target.value)}
@@ -74,11 +86,11 @@ function FieldInput({ f, value, error, bills, onChange, onBill }: { f: Field; va
   );
 }
 
-export default function DocForm({ cfg, initial, prefill, draftKey }: { cfg: ModuleConfig; initial?: DocRecord; prefill?: { data: Record<string, string>; items: Row[] }; draftKey: string }) {
+export default function DocForm({ cfg, initial, prefill, draftKey, leadId, leadBranch }: { cfg: ModuleConfig; initial?: DocRecord; prefill?: { data: Record<string, string>; items: Row[] }; draftKey: string; leadId?: string; leadBranch?: string }) {
   const router = useRouter();
   const allDocs = useAllDocs();
   const user = useSession();
-  const isManager = user?.role === 'manager';
+  const isManager = !!user && user.role !== 'admin'; // branch owner or team: always their own branch
   const branches = useActiveBranches();
   const [activeBranch] = useActiveBranch();
   const companyFor = useCompanyFor();
@@ -91,7 +103,12 @@ export default function DocForm({ cfg, initial, prefill, draftKey }: { cfg: Modu
   const [number, setNumber] = useState(initial?.number ?? '');
   const [numberTouched, setNumberTouched] = useState(false);
   const [docDate, setDocDate] = useState(initial?.docDate ?? '');
-  const [branchId, setBranchId] = useState(initial?.branchId ?? (isManager ? user?.branchId ?? '' : ''));
+  const [branchId, setBranchId] = useState(initial?.branchId ?? (isManager ? user?.branchId ?? '' : leadBranch ?? ''));
+  // the saved customer (lead) this new document is for: its status moves on when the document is saved
+  const [linkedLead, setLinkedLead] = useState(leadId ?? '');
+  const fieldKeys = useMemo(() => new Set(cfg.sections.flatMap((s) => s.fields.map((f) => f.key))), [cfg]);
+  const { leads } = useLeads(isNew && canSee(user, 'customers'));
+  const linkedName = linkedLead ? leads.find((l) => l.id === linkedLead)?.name ?? '' : '';
   const co = companyFor(branchId || null);
   const defaultTerms = termsFor(cfg.slug, branchId || null, cfg.terms).join('\n');
   const [status, setStatus] = useState(initial?.status ?? cfg.statuses[0]);
@@ -99,6 +116,8 @@ export default function DocForm({ cfg, initial, prefill, draftKey }: { cfg: Modu
   const [legacyNote] = useState(() => !!(initial && cfg.freight && initial.data.calcMode !== FREIGHT && validRows(initial.items).length));
   const [data, setData] = useState<Record<string, string>>(() => {
     if (!initial) return { gstRate: '0', gstMode: 'Auto', roundOff: '1', discountType: '₹', ...(cfg.defaults ?? {}), ...(prefill?.data ?? {}) };
+    // "GST Charge Hide" was renamed "Without GST …"
+    if (cfg.freight && initial.data.gstShow === 'GST Charge Hide') return { ...initial.data, gstShow: `Without GST ${cfg.slug === 'bill' ? 'Bill' : 'Quotation'}` };
     if (!cfg.freight || initial.data.calcMode === FREIGHT) return initial.data;
     // made with the old "Services & charges" list: its total moves into Freight so the amount stays the same
     const rows = validRows(initial.items);
@@ -350,13 +369,14 @@ export default function DocForm({ cfg, initial, prefill, draftKey }: { cfg: Modu
       if (dup && !window.confirm(`This looks like a duplicate of ${dup.number} (same customer, date and amount). Save anyway?`)) return;
     }
     const manual = numberTouched ? number.trim() : '';
-    const payload = { type: cfg.slug, branchId, ...(manual && (isNew || manual !== initial?.number) ? { number: manual } : {}), status: cfg.slug === 'bill' ? initial?.status ?? 'Unpaid' : status, docDate: date, data: cleaned, items: rows, ...(initial ? { rev: initial.rev } : {}) };
+    const payload = { type: cfg.slug, branchId, ...(manual && (isNew || manual !== initial?.number) ? { number: manual } : {}), status: cfg.slug === 'bill' ? initial?.status ?? 'Unpaid' : status, docDate: date, data: cleaned, items: rows, ...(initial ? { rev: initial.rev } : {}), ...(isNew && linkedLead ? { leadId: linkedLead } : {}) };
     setSaving(true);
     try {
       if (cfg.money) rememberRates(rows);
       const saved = initial ? await updateDoc(initial.id, payload) : await createDoc(payload);
       clearDraft(draftKey);
       dirty.current = false;
+      if (isNew && linkedLead) leadsChanged();
       router.replace(`/docs/${cfg.slug}/view?id=${saved.id}`);
     } catch (e) {
       setSaving(false);
@@ -365,6 +385,22 @@ export default function DocForm({ cfg, initial, prefill, draftKey }: { cfg: Modu
         setFormError(e.status === 409 && e.code === 'conflict' ? e.message + ' (Go back and open it again.)' : e.message);
       } else setFormError('Could not save. Please try again.');
     }
+  };
+
+  /** Copies a saved customer's details into the empty boxes of this form (never over what was typed). */
+  const pickCustomer = (p: Picked) => {
+    touch();
+    setData((cur) => {
+      const n = { ...cur };
+      for (const [k, v] of Object.entries(p.data)) {
+        if (!v || !fieldKeys.has(k)) continue;
+        const now = (n[k] ?? '').trim();
+        if (!now || now === (cfg.defaults?.[k] ?? '')) n[k] = v;
+      }
+      return n;
+    });
+    if (p.leadId) setLinkedLead(p.leadId);
+    if (p.branchId && !isManager && branches.some((b) => b.id === p.branchId)) setBranchId(p.branchId);
   };
 
   const listId = cfg.suggest ? 'suggest-' + cfg.suggest : undefined;
@@ -452,6 +488,13 @@ export default function DocForm({ cfg, initial, prefill, draftKey }: { cfg: Modu
           This {cfg.title.toLowerCase()} was made with the old charges list. Its amount has been moved into <b>Freight charge</b> (Payment details) and the old lines are in the remark. Check the totals, then save.
         </div>
       )}
+      {isNew && fieldKeys.has('customerName') && <CustomerPicker leads={leads} docs={allDocs} onPick={pickCustomer} />}
+      {linkedLead && (
+        <div className="mb-3 flex items-center gap-2 rounded-2xl border border-fuchsia-200 bg-fuchsia-50 px-3 py-2 text-xs text-fuchsia-900">
+          <span className="flex-1">For saved customer <b className="uppercase">{linkedName || 'from your leads'}</b>. {cfg.slug === 'bill' ? 'It is marked Converted when you save.' : cfg.slug === 'quotation' ? 'It is marked Quotation sent when you save.' : 'This document is added to the customer.'}</span>
+          <button type="button" className="font-semibold underline" onClick={() => setLinkedLead('')}>Unlink</button>
+        </div>
+      )}
       <p className="mb-3 px-1 text-xs text-slate-500">Tap a section to open it. Nothing is compulsory: fill what you know. <span lang="hi">· जो पता है वही भरें, कुछ भी ज़रूरी नहीं।</span></p>
 
       <div className="space-y-3">
@@ -476,7 +519,8 @@ export default function DocForm({ cfg, initial, prefill, draftKey }: { cfg: Modu
                 </select>
               )}
               <Err msg={errors.branchId} /></div>
-            {cfg.slug !== 'bill' && (
+            {/* status is changed later, from the list or when editing; a new document starts with the first status */}
+            {initial && cfg.slug !== 'bill' && (
               <div className="col-span-2"><FieldLabel text="Status" htmlFor="f-status" />
                 <select id="f-status" className="input" value={status} onChange={(e) => { setStatus(e.target.value); touch(); }}>{cfg.statuses.map((x) => <option key={x}>{x}</option>)}</select></div>
             )}

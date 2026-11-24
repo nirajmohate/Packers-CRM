@@ -26,12 +26,13 @@ export default function SurveyLinkSheet({ open, onClose }: { open: boolean; onCl
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [url, setUrl] = useState('');
+  const [made, setMade] = useState<{ id: string; number: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
   const [links, setLinks] = useState<LinkRow[] | null>(null);
   const [ask, confirmDialog] = useConfirm();
-  const isManager = user?.role === 'manager';
+  const isManager = !!user && user.role !== 'admin'; // branch owner or team: always their own branch
 
   const load = useCallback(() => {
     api<{ links: LinkRow[] }>('/api/survey-links' + (!isManager && active !== 'all' ? `?branch=${active}` : '')).then((r) => setLinks(r.links)).catch(() => setLinks([]));
@@ -49,9 +50,11 @@ export default function SurveyLinkSheet({ open, onClose }: { open: boolean; onCl
     if (!isManager && !branchId) { setError('Choose the branch this survey is for'); return; }
     setBusy(true);
     try {
-      const r = await api<{ path: string }>('/api/survey-links', { body: { branchId, customerName: name.trim(), customerPhone: phone.trim() } });
+      const r = await api<{ path: string; doc?: { id: string; number: string } }>('/api/survey-links', { body: { branchId, customerName: name.trim(), customerPhone: phone.trim() } });
       setUrl(window.location.origin + r.path);
+      setMade(r.doc ? { id: r.doc.id, number: r.doc.number } : null);
       load();
+      refresh(); // the new survey ("Link sent") shows in the list right away
     } catch (e) { setError(e instanceof ApiFail ? e.message : 'Could not make the link'); }
     setBusy(false);
   };
@@ -90,7 +93,7 @@ export default function SurveyLinkSheet({ open, onClose }: { open: boolean; onCl
           )}
           <div className="grid grid-cols-2 gap-3">
             <div><label className="label">Customer name (optional) <Hi t="Customer name" className="text-slate-400" /></label><input className="input" value={name} maxLength={120} onChange={(e) => setName(e.target.value)} /></div>
-            <div><label className="label">Mobile (optional) <Hi t="Mobile number" className="text-slate-400" /></label><input className="input" type="tel" inputMode="tel" value={phone} maxLength={15} onChange={(e) => setPhone(e.target.value)} /></div>
+            <div><label className="label">Mobile (optional) <Hi t="Mobile number" className="text-slate-400" /></label><div className="relative"><span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-base font-semibold text-slate-600">+91</span><input className="input pl-12" type="tel" inputMode="tel" value={phone} maxLength={15} onChange={(e) => setPhone(e.target.value)} /></div></div>
           </div>
           {error && <p className="text-sm font-medium text-red-600">{error}</p>}
           <button className="btn w-full bg-violet-600 text-white hover:bg-violet-700" disabled={busy} onClick={create}>{busy ? <Loader2 size={18} className="animate-spin" /> : <Link2 size={18} />}Make link</button>
@@ -98,6 +101,7 @@ export default function SurveyLinkSheet({ open, onClose }: { open: boolean; onCl
       ) : (
         <div className="space-y-3">
           <p className="flex items-center gap-2 text-sm font-semibold text-emerald-700"><Check size={18} />Link ready. Send it now: it is shown only once.</p>
+          {made && <p className="rounded-xl bg-sky-50 p-2.5 text-xs text-sky-900">Survey <b>{made.number}</b> is in your Survey List as <b>Link sent</b>. When the customer sends the form it changes to <b>Filled by customer</b>.</p>}
           <p className="break-all rounded-xl border-[1.5px] border-slate-500 bg-slate-50 p-3 font-mono text-xs text-slate-800">{url}</p>
           <div className="grid grid-cols-3 gap-2">
             <button className="btn bg-emerald-600 text-white hover:bg-emerald-700" onClick={whatsapp}><MessageCircle size={17} />WhatsApp</button>
@@ -120,7 +124,7 @@ export default function SurveyLinkSheet({ open, onClose }: { open: boolean; onCl
                   <p className="text-xs text-slate-500">Made {fmtDate(l.createdAt.slice(0, 10))} by {l.createdByName}{l.state === 'open' ? ` · valid till ${fmtDate(l.expiresAt.slice(0, 10))}` : ''}</p>
                 </div>
                 <span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold ${STATE[l.state][1]}`}>{STATE[l.state][0]}</span>
-                {l.state === 'used' && l.docId && <Link href={`/docs/survey/view?id=${l.docId}`} className="text-xs font-semibold text-brand-700 underline" onClick={onClose}>{l.docNumber || 'Open'}</Link>}
+                {l.docId && <Link href={`/docs/survey/view?id=${l.docId}`} className="text-xs font-semibold text-brand-700 underline" onClick={onClose}>{l.docNumber || 'Open'}</Link>}
                 {l.state === 'open' && <button aria-label="Cancel link" onClick={() => cancel(l)} className="grid h-8 w-8 place-items-center rounded-full text-red-500"><XCircle size={18} /></button>}
               </li>
             ))}

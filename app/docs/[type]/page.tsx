@@ -2,17 +2,20 @@
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useMemo, useState } from 'react';
-import { ArrowDownUp, CalendarDays, Download, Eye, FileDown, Link2, Loader2, MoreHorizontal, Pencil, Plus, Search, SlidersHorizontal, X } from 'lucide-react';
+import { ArrowDownUp, CalendarDays, Download, Eye, FileDown, Link2, Loader2, MoreHorizontal, Pencil, Plus, Search, SlidersHorizontal, Trash2, X } from 'lucide-react';
 import type { DocRecord } from '@/lib/types';
 import { BY_SLUG, CONVERT } from '@/lib/config';
 import { docCalc } from '@/lib/ledger';
-import { fmtDate, inr, todayISO } from '@/lib/format';
+import { fmtDate, fmtPhone, inr, todayISO } from '@/lib/format';
 import { fyOf } from '@/lib/numbering';
 import { docRows, exportSheets, partyOf } from '@/lib/export';
-import { ensureSince, useActiveBranch, useBranches, useDocs, useHomeState, useSince } from '@/lib/store';
-import { Hi, ModuleIcon, Sheet, StatusBadge } from '@/components/ui';
+import { ensureSince, useSession, useActiveBranch, useBranches, useDocs, useHomeState, useSince } from '@/lib/store';
+import { Hi, ModuleIcon, Sheet } from '@/components/ui';
 import { LoadCounter, LoadMore, useInfinite } from '@/components/Infinite';
 import SurveyLinkSheet from '@/components/SurveyLinkSheet';
+import { ROW_TONE, StatusSelect, toneOf, useStatusChanger } from '@/components/StatusControl';
+import { useDeleteDoc } from '@/components/DeleteDialog';
+import { canDelete, canUseType } from '@/lib/roles';
 import { usePdfDownload } from '@/lib/usePdf';
 
 const PERIODS = ['Any date', 'Today', 'Last 7 days', 'This month', 'Last month', 'Last 3 months', 'This financial year', 'Last financial year', 'Custom range'] as const;
@@ -92,6 +95,11 @@ function DocList() {
   const [pdfBusy, setPdfBusy] = useState('');
   const [pdfErr, setPdfErr] = useState('');
   const downloadPdf = usePdfDownload();
+  const me = useSession();
+  // "Make quotation / bill…" only for the types this account can use
+  const convertTo = (CONVERT[type] ?? []).filter((t) => canUseType(me, t));
+  const [changeStatus, statusElements, statusBusy] = useStatusChanger();
+  const [askDelete, deleteDialog] = useDeleteDoc();
   // the side menu's "Share survey link" opens this page with ?share=1
   const shareParam = useSearchParams().get('share');
   const router = useRouter();
@@ -201,7 +209,7 @@ function DocList() {
         </button>
       </div>
 
-      <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4">
+      <div className="no-scrollbar -mx-3 flex gap-2 overflow-x-auto px-3 sm:-mx-4 sm:px-4 lg:-mx-6 lg:px-6">
         {['All', ...statuses].map((s) => (
           <button key={s} onClick={() => patch({ status: s })} className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium ${f.status === s ? 'bg-brand-600 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-300'}`}>{s}</button>
         ))}
@@ -256,7 +264,7 @@ function DocList() {
                   {list.slice(0, shown).map(({ d, c }, i) => {
                     const fromCustomer = d.createdByName === 'Customer (survey link)';
                     return (
-                      <tr key={d.id} className={`${i % 2 ? 'bg-slate-50/80' : 'bg-white'} hover:bg-sky-50`}>
+                      <tr key={d.id} className={ROW_TONE[toneOf(c.status)]}>
                         <td className="px-3 py-2.5 align-top font-semibold text-slate-500">{i + 1}.</td>
                         <td className="px-3 py-2.5 align-top">
                           <Link href={`/docs/${type}/view?id=${d.id}`} className="block whitespace-nowrap font-bold hover:underline" style={{ color: cfg.color }}>{d.number}</Link>
@@ -266,7 +274,7 @@ function DocList() {
                         </td>
                         <td className="max-w-[220px] px-3 py-2.5 align-top">
                           <span className="block truncate font-semibold uppercase text-fuchsia-700">{partyOf(d, cfg) || '—'}</span>
-                          <span className="block text-xs text-slate-500">Phone: {d.data.customerPhone || d.data.payeePhone || 'N/A'}</span>
+                          <span className="block text-xs text-slate-500">Phone: {fmtPhone(d.data.customerPhone || d.data.payeePhone) || 'N/A'}</span>
                           {fromCustomer && <span className="mt-0.5 inline-block rounded bg-violet-100 px-1.5 text-[10px] font-semibold text-violet-700">Filled by customer</span>}
                         </td>
                         {hasCity && (
@@ -281,7 +289,7 @@ function DocList() {
                             {cfg.slug === 'bill' && c.balance != null && c.balance > 0 && c.status !== 'Cancelled' && <span className="block text-[11px] font-semibold text-amber-700">Due {inr(c.balance)}</span>}
                           </td>
                         )}
-                        <td className="px-3 py-2.5 align-top"><StatusBadge status={c.status} /></td>
+                        <td className="px-3 py-2.5 align-top"><StatusSelect doc={d} status={c.status} disabled={statusBusy === d.id} onPick={(next) => changeStatus(d, c.status, next, c.balance ?? 0)} /></td>
                         <td className="px-3 py-2.5 align-top">
                           <div className="flex justify-end gap-1.5">
                             <button
@@ -364,8 +372,9 @@ function DocList() {
           <div className="grid gap-2">
             <Link href={`/docs/${type}/view?id=${rowMenu.id}`} className="btn bg-sky-600 text-white hover:bg-sky-700"><Eye size={17} />View <Hi t="View" className="text-xs text-white/90" /></Link>
             <Link href={`/docs/${type}/edit?id=${rowMenu.id}`} className="btn bg-amber-500 text-white hover:bg-amber-600"><Pencil size={17} />Edit <Hi t="Edit" className="text-xs text-white/90" /></Link>
-            {(CONVERT[type] ?? []).length > 0 && <p className="pt-2 text-xs font-semibold text-slate-500">Create from this {cfg.title.toLowerCase()} (details are copied)</p>}
-            {(CONVERT[type] ?? []).map((t) => {
+            {canDelete(me) && <button onClick={async () => { const d = rowMenu; setRowMenu(null); await askDelete(d); }} className="btn border-2 border-red-200 bg-red-50 text-red-700 hover:bg-red-100"><Trash2 size={17} />Delete <span lang="hi" className="text-xs font-normal">· हटाएं</span></button>}
+            {convertTo.length > 0 && <p className="pt-2 text-xs font-semibold text-slate-500">Create from this {cfg.title.toLowerCase()} (details are copied)</p>}
+            {convertTo.map((t) => {
               const tc = BY_SLUG[t];
               return (
                 <Link key={t} href={`/docs/${t}/new?from=${rowMenu.id}`} className="btn border-2 bg-white" style={{ borderColor: tc.color, color: tc.color }}>
@@ -377,6 +386,8 @@ function DocList() {
         )}
       </Sheet>
 
+      {statusElements}
+      {deleteDialog}
       {cfg.slug === 'survey' && <SurveyLinkSheet open={linkSheet} onClose={() => setLinkSheet(false)} />}
 
       <Sheet open={menu} onClose={() => setMenu(false)} title={`Export ${list.length} ${cfg.title.toLowerCase()}`}>

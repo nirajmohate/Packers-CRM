@@ -52,3 +52,13 @@ export function amountInWords(amount: number): string {
   if (paise) s += ' and ' + two(paise) + ' Paise';
   return s + ' Only';
 }
+
+/** Indian mobile numbers with the country code: "9876543210" → "+91 98765 43210". Other numbers are left as typed. */
+export function fmtPhone(v?: string): string {
+  const raw = (v ?? '').trim();
+  if (!raw) return '';
+  let d = raw.replace(/\D/g, '');
+  if (d.length === 12 && d.startsWith('91')) d = d.slice(2);
+  else if (d.length === 11 && d.startsWith('0')) d = d.slice(1);
+  return d.length === 10 ? `+91 ${d.slice(0, 5)} ${d.slice(5)}` : raw;
+}

@@ -2,7 +2,7 @@ import { Types } from 'mongoose';
 import { z } from 'zod';
 import { api, ApiError, jsonBody } from '@/lib/server/http';
 import { audit } from '@/lib/server/audit';
-import { Branch, Doc, Settings, User } from '@/lib/server/models';
+import { Branch, Doc, Lead, Settings, User } from '@/lib/server/models';
 import { branchOut } from '@/lib/server/out';
 
 const Patch = z.object({
@@ -32,8 +32,8 @@ export const PATCH = api({ auth: 'admin' }, async ({ req, user, params }) => {
 
 export const DELETE = api({ auth: 'admin' }, async ({ user, params }) => {
   const cur = await find(params.id);
-  if ((await Doc.countDocuments({ branchId: params.id })) > 0 || (await User.countDocuments({ branchId: params.id })) > 0)
-    throw new ApiError(409, 'This branch has documents or managers, so it can only be deactivated.');
+  if ((await Doc.countDocuments({ branchId: params.id })) > 0 || (await User.countDocuments({ branchId: params.id })) > 0 || (await Lead.countDocuments({ branchId: params.id })) > 0)
+    throw new ApiError(409, 'This branch has documents, users or customers, so it can only be deactivated.');
   await Branch.deleteOne({ _id: params.id });
   await Settings.deleteOne({ _id: `branch:${params.id}` });
   await audit(user, { action: 'delete', entity: 'branch', entityId: params.id, summary: `Deleted branch ${cur.name}` });

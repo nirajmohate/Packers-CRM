@@ -4,7 +4,7 @@ import type { Company, CompanyProfile, SessionUser, SettingsBundle } from '../ty
 import { DEFAULT_COMPANY, PROFILE_KEYS, RULE_KEYS } from '../defaults';
 import { effectiveCompany } from '../settingsFn';
 import { BY_SLUG } from '../config';
-import { hasSeqToken } from '../numbering';
+import { hasSeqToken, OLD_DEFAULT_FORMAT } from '../numbering';
 import { validateValue } from '../validate';
 import { audit } from './audit';
 import { ApiError } from './http';
@@ -19,6 +19,8 @@ export async function loadBundle(): Promise<SettingsBundle> {
     const id = String(r._id);
     if (id === 'global') {
       bundle.global = { ...DEFAULT_COMPANY, ...(r.profile as Rec), ...(r.rules as Rec) } as Company;
+      // settings saved with the old default number style switch to the new daily style (QTN/DEL/23-11-26/01)
+      if (bundle.global.numberFormat === OLD_DEFAULT_FORMAT) bundle.global.numberFormat = DEFAULT_COMPANY.numberFormat;
       bundle.terms.global = (r.terms as Record<string, string[]>) ?? {};
     } else if (id.startsWith('branch:')) {
       const b = id.slice(7);

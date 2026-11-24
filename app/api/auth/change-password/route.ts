@@ -8,6 +8,8 @@ import { User } from '@/lib/server/models';
 const Body = z.object({ current: z.string().min(1).max(200), next: z.string().min(1).max(200) });
 
 export const POST = api({ auth: 'user', allowMustChange: true }, async ({ req, user }) => {
+  // the Team account is shared; changing its password would sign out every executive, so only the branch owner resets it
+  if (user.role === 'team') throw new ApiError(403, 'The Team account password is set by your branch owner');
   const { current, next } = await jsonBody(req, Body);
   const u = await User.findById(user.id).lean();
   if (!u || !(await checkPassword(current, u.passwordHash as string))) throw new ApiError(422, 'Your current password is wrong', { current: 'Wrong password' });

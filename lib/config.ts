@@ -1,5 +1,5 @@
 import type { CalcLine, Column, Field, ModuleConfig, Section } from './types';
-import { EXTRA, FREIGHT, INCLUDED, num, round2 } from './calc';
+import { EXTRA, FREIGHT, INCLUDED, gstOptions, num, round2 } from './calc';
 import { STATES } from './states';
 
 /* ---------- shared pieces ---------- */
@@ -7,7 +7,7 @@ const customer = (title = 'Customer', _phoneRequired = true): Section => ({
   title,
   fields: [
     { key: 'customerName', label: 'Customer name' },
-    { key: 'customerPhone', label: 'Mobile number', type: 'tel', half: true, validate: 'phone', placeholder: '10-digit mobile' },
+    { key: 'customerPhone', label: 'Mobile number', type: 'tel', half: true, validate: 'phone', placeholder: '98765 43210' },
     { key: 'customerEmail', label: 'Email', half: true, validate: 'email' },
   ],
 });
@@ -112,7 +112,7 @@ const payment = (kind: 'quotation' | 'bill'): Section => ({
     { key: 'greenTax', label: kind === 'quotation' ? 'Octroi / green tax (₹)' : 'Green tax (₹)', type: 'number', min: 0, money: true, half: true },
     { key: 'surchargeMode', label: 'Surcharge', type: 'select', options: ['Not Applicable', 'Applicable'], half: true },
     { key: 'surchargePct', label: 'Surcharge % (on freight)', type: 'select', options: PCTS, half: true, showIf: { key: 'surchargeMode', in: ['Applicable'] } },
-    { key: 'gstShow', label: 'GST (show / hide)', type: 'select', options: [kind === 'quotation' ? 'GST Charge Show In Quotation' : 'GST Charge Show In Bill', 'GST Charge Hide'], half: true },
+    { key: 'gstShow', label: 'GST (show / hide)', type: 'select', options: gstOptions(kind === 'quotation' ? 'Quotation' : 'Bill'), half: true },
     { key: 'gstRate', label: 'GST %', type: 'select', options: GST_RATES, half: true },
     { key: 'gstMode', label: 'GST type', type: 'select', options: ['CGST + SGST', 'IGST'], half: true },
     ...(kind === 'bill'
@@ -152,7 +152,7 @@ export const MODULES: ModuleConfig[] = [
   {
     slug: 'quotation', title: 'Quotation', short: 'QTN', prefix: 'QTN', color: '#2563eb', icon: 'FileText',
     money: true, freight: true, goods: true, advance: 'required', bank: true, qr: true,
-    statuses: ['Pending', 'Approved', 'Rejected'],
+    statuses: ['Pending', 'In process', 'Approved', 'Booked', 'Rejected', 'Cancelled'],
     defaults: freightDefaults('quotation'),
     sections: [
       {
@@ -162,7 +162,7 @@ export const MODULES: ModuleConfig[] = [
           { key: 'companyName', label: 'Company name of party', half: true },
           { key: 'customerGst', label: 'Company GST no.', validate: 'gstin', upper: true, half: true, placeholder: '27ABCDE1234F1Z5' },
           { key: 'customerName', label: 'Party name', half: true },
-          { key: 'customerPhone', label: 'Party mobile', type: 'tel', validate: 'phone', half: true, placeholder: '10-digit mobile' },
+          { key: 'customerPhone', label: 'Party mobile', type: 'tel', validate: 'phone', half: true, placeholder: '98765 43210' },
           { key: 'customerEmail', label: 'Email', validate: 'email', half: true },
           { key: 'packingDate', label: 'Packing date', type: 'date', half: true },
           { key: 'moveDate', label: 'Moving date', type: 'date', half: true },
@@ -180,7 +180,7 @@ export const MODULES: ModuleConfig[] = [
   },
   {
     slug: 'survey', title: 'Survey List', short: 'SUR', prefix: 'SUR', color: '#7c3aed', icon: 'ClipboardList',
-    suggest: 'household', itemsTitle: 'Inventory & volume', statuses: ['Scheduled', 'Completed', 'From customer'],
+    suggest: 'household', itemsTitle: 'Inventory & volume', statuses: ['Pending', 'In process', 'Link sent', 'Filled by customer', 'Completed', 'Cancelled'],
     sections: [
       customer(),
       {
@@ -212,7 +212,7 @@ export const MODULES: ModuleConfig[] = [
   },
   {
     slug: 'packing', title: 'Packing List', short: 'PKG', prefix: 'PKG', color: '#ea580c', icon: 'PackageOpen',
-    suggest: 'household', itemsTitle: 'Packed items', statuses: ['Pending', 'Packed', 'Delivered'],
+    suggest: 'household', itemsTitle: 'Packed items', statuses: ['Pending', 'In process', 'Packed', 'Delivered', 'Cancelled'],
     sections: [
       customer(),
       {
@@ -239,7 +239,7 @@ export const MODULES: ModuleConfig[] = [
   },
   {
     slug: 'lr', title: 'LR / Bilty', short: 'LR', prefix: 'LR', color: '#0891b2', icon: 'Truck',
-    itemsTitle: 'Goods description', statuses: ['Booked', 'In transit', 'Delivered'],
+    itemsTitle: 'Goods description', statuses: ['Pending', 'In process', 'Booked', 'In transit', 'Delivered', 'Cancelled'],
     calc: (d) => {
       const base = round2(num(d.freight) + num(d.hamali) + num(d.otherCharges));
       const gst = round2((base * num(d.lrGst)) / 100);
@@ -314,7 +314,7 @@ export const MODULES: ModuleConfig[] = [
   },
   {
     slug: 'vehicle', title: 'Vehicle Condition', short: 'VCR', prefix: 'VCR', color: '#0d9488', icon: 'CarFront',
-    statuses: ['Draft', 'Completed'],
+    statuses: ['Pending', 'In process', 'Completed', 'Cancelled'],
     sections: [
       customer('Vehicle owner'),
       {
@@ -354,7 +354,7 @@ export const MODULES: ModuleConfig[] = [
   {
     slug: 'proforma', title: 'Proforma Invoice', short: 'PRO', prefix: 'PRO', color: '#9333ea', icon: 'FileClock',
     money: true, advance: 'required', advanceLabel: 'Advance payable (₹)', bank: true, qr: true, suggest: 'services', itemsTitle: 'Services & charges',
-    statuses: ['Draft', 'Sent', 'Paid'],
+    statuses: ['Pending', 'In process', 'Sent', 'Paid', 'Cancelled'],
     sections: [customer(), billing(), move([{ key: 'validTill', label: 'Valid till', type: 'date', half: true }]), notes],
     columns: moneyCols,
     terms: ['This is a proforma invoice and not a tax invoice.', ...MONEY_TERMS.slice(0, 2)],
@@ -387,7 +387,7 @@ export const MODULES: ModuleConfig[] = [
         title: 'Billing details',
         fields: [
           { key: 'customerName', label: 'Bill to name', half: true },
-          { key: 'customerPhone', label: 'Bill to phone', type: 'tel', validate: 'phone', half: true, placeholder: '10-digit mobile' },
+          { key: 'customerPhone', label: 'Bill to phone', type: 'tel', validate: 'phone', half: true, placeholder: '98765 43210' },
           { key: 'customerGst', label: 'GSTIN', validate: 'gstin', upper: true, placeholder: '27ABCDE1234F1Z5' },
           ...place('bill').map((f) => (f.key === 'billAddress' ? { ...f, key: 'billingAddress' } : f)),
         ],
@@ -462,7 +462,7 @@ export const MODULES: ModuleConfig[] = [
   },
   {
     slug: 'fov', title: 'FOV-SCF Form', short: 'FOV', prefix: 'FOV', color: '#4f46e5', icon: 'ShieldCheck',
-    statuses: ['Draft', 'Completed'],
+    statuses: ['Pending', 'In process', 'Completed', 'Cancelled'],
     calc: (d) => {
       const fov = num(d.fovAmount), scf = num(d.scfCharge);
       const lines: CalcLine[] = [];

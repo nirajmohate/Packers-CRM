@@ -30,9 +30,9 @@ export default function Trash() {
       {trash === null ? <p className="py-8 text-center text-sm text-slate-400">Loading…</p> : trash.length === 0 ? <div className="card p-8 text-center text-sm text-slate-500">The recycle bin is empty.</div> : (
         <>
           <div className="card overflow-x-auto">
-            <table className="w-full min-w-[640px] text-left text-sm">
+            <table className="w-full min-w-[820px] text-left text-sm">
               <thead><tr className="bg-slate-700 text-xs uppercase tracking-wide text-white">
-                <th className="w-10 px-3 py-2.5">#</th><th className="px-3 py-2.5">Document</th><th className="px-3 py-2.5">Customer</th><th className="px-3 py-2.5">Days left</th><th className="px-3 py-2.5 text-right">Action</th>
+                <th className="w-10 px-3 py-2.5">#</th><th className="px-3 py-2.5">Document</th><th className="px-3 py-2.5">Customer</th><th className="px-3 py-2.5">Reason for delete <span lang="hi" className="normal-case font-normal text-white/80">· कारण</span></th><th className="px-3 py-2.5">Days left</th><th className="px-3 py-2.5 text-right">Action</th>
               </tr></thead>
               <tbody className="divide-y divide-slate-200">
                 {rows.slice(0, shown).map((d, i) => {
@@ -43,6 +43,10 @@ export default function Trash() {
                       <td className="px-3 py-2.5 font-semibold text-slate-500">{i + 1}.</td>
                       <td className="px-3 py-2.5"><span className="flex items-center gap-2"><ModuleIcon cfg={cfg} size={32} /><span><span className="block whitespace-nowrap font-bold" style={{ color: cfg.color }}>{d.number}</span><span className="text-xs text-slate-500">{cfg.title} · {fmtDate(d.docDate)}</span></span></span></td>
                       <td className="max-w-[200px] truncate px-3 py-2.5 font-semibold uppercase text-fuchsia-700">{d.data[cfg.party ?? 'customerName'] || '—'}</td>
+                      <td className="max-w-[260px] px-3 py-2.5 text-xs">
+                        <span className="block break-words font-medium text-red-700">{d.deleteReason || <span className="text-slate-400">No reason (deleted before reasons were asked)</span>}</span>
+                        <span className="block text-[11px] text-slate-500">{d.deletedByName ? `by ${d.deletedByName} · ` : ''}{d.deletedAt ? fmtDate(d.deletedAt.slice(0, 10)) : ''}</span>
+                      </td>
                       <td className={`px-3 py-2.5 text-xs font-semibold ${left <= 5 ? 'text-red-600' : 'text-slate-600'}`}>{left} days</td>
                       <td className="px-3 py-2.5"><span className="flex justify-end gap-1.5">
                         <button className="btn min-h-[34px] bg-emerald-600 px-3 text-xs text-white hover:bg-emerald-700" onClick={() => restoreDoc(d.id).then(() => say(`${d.number} restored`)).catch(fail)}><RotateCcw size={15} />Restore</button>

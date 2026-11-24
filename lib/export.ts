@@ -20,8 +20,12 @@ function save(blob: Blob, name: string) {
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 
+/** Text that starts like a formula (=, +, -, @) is opened as text, so a typed name can never run as a formula in Excel. */
+export const safeCell = (c: Cell): Cell => (typeof c === 'string' && /^[=+\-@\t\r]/.test(c) && !/^-?\d+(\.\d+)?$/.test(c) && c !== '-' ? "'" + c : c);
+
 /** CSV exports only the first sheet; Excel exports all of them. */
-export async function exportSheets(sheets: Sheet[], filename: string, format: 'csv' | 'xlsx') {
+export async function exportSheets(input: Sheet[], filename: string, format: 'csv' | 'xlsx') {
+  const sheets = input.map((s) => ({ ...s, rows: s.rows.map((r, i) => (i === 0 ? r : r.map(safeCell))) }));
   if (format === 'csv') {
     const csv = '\ufeff' + sheets[0].rows.map((r) => r.map(csvCell).join(',')).join('\r\n');
     save(new Blob([csv], { type: 'text/csv;charset=utf-8' }), filename + '.csv');

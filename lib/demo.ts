@@ -18,7 +18,7 @@ export function demoDocs(): SeedDoc[] {
     const key = `${type}|${branchCode}|${fy}`;
     const seq = (counters.get(key) ?? 0) + 1;
     counters.set(key, seq);
-    const d: SeedDoc = { type, branchCode, docDate, fy, seq, status, data, items, number: formatNumber(DEFAULT_FORMAT, { prefix: PREFIX[type], br: branchCode, fy, seq }), ...extra };
+    const d: SeedDoc = { type, branchCode, docDate, fy, seq, status, data, items, number: formatNumber(DEFAULT_FORMAT, { prefix: PREFIX[type], br: branchCode, fy, seq, date: docDate }), ...extra };
     out.push(d);
     return d;
   };

@@ -1,7 +1,7 @@
 import type { DocRecord, ModuleConfig, Row } from './types';
 import { isVisible } from './fields';
 import { docCalc } from './ledger';
-import { FREIGHT, lineAmount, moneyCalc, round2, validRows } from './calc';
+import { FREIGHT, gstChoice, lineAmount, moneyCalc, round2, validRows } from './calc';
 import { GOODS_KEY, readGoods, writeGoods } from './goods';
 
 /** Build a pre-filled draft for `target` from an existing document. */
@@ -76,7 +76,7 @@ export function prefillFrom(src: DocRecord, srcCfg: ModuleConfig, target: Module
     // new-style quotation / bill → proforma (still priced lines): one line with the amount before GST
     const m = moneyCalc(src, { home });
     items = [{ description: `As per ${srcCfg.title} ${src.number}`, qty: '1', unit: 'Lump sum', rate: String(m.taxable), gst: '', hsn: '' }];
-    if (src.data.gstRate) data.gstRate = /hide/i.test(src.data.gstShow || '') ? '0' : src.data.gstRate;
+    if (src.data.gstRate) data.gstRate = ['none', 'exempt', 'extra'].includes(gstChoice(src.data.gstShow)) ? '0' : src.data.gstRate;
     if (src.data.advance) data.advance = src.data.advance;
   }
 
