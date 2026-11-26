@@ -1,5 +1,14 @@
 # Cloud Packers CRM: Stage 2 (database + login)
 
+## What changed in 0.11.0
+
+- **New PDF design** for every document (quotation, bill, LR, survey, packing list, vehicle condition, proforma, receipt, FOV, letters): letterhead with logo, tagline and a truck illustration, a contact strip, a rounded title badge, sections in tabbed boxes, blue tax table, amount in words, totals with a dark "Total" bar, terms box, signature area and a wave footer with page numbers.
+- **Branch contact on PDFs**: mobile and address come from the branch (Branches → edit), email from Settings (same for all branches). While these are empty, SAMPLE details are printed (+91 98765 43210, info@cloudpackers.in, "Office No. 12, Main Road, <city>"); change them in the app, or the defaults in `lib/brand.ts`.
+- **Share with customer** (⋯ menu and the document page): WhatsApp and Email buttons. They open a short message addressed only to the mobile / email saved on that document, with a link to the PDF. Buttons stay disabled until the number / email is filled in.
+  - The PDF link (`/p/...`) is signed with `AUTH_SECRET` (HMAC-SHA256), opens only that one document read-only, expires after 90 days, stops working if the document is deleted, is rate-limited and not indexed. Every link made is in the audit log. Changing `AUTH_SECRET` cancels all links.
+- Quotation form: **Customer name** now comes first (before company name and GST), and "Party name / Party mobile" are renamed "Customer name / Customer mobile".
+- Responsive: checked every page at 320, 375, 768, 1024 and 1440 px wide; on very narrow phones (< 380 px) form boxes now take the full width.
+
 ## What changed in 0.10.0
 
 **Three kinds of users**

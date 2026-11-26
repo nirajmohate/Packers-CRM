@@ -40,7 +40,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     setSheet(null);
     window.dispatchEvent(new Event('pm-share-survey'));
   };
-  const bare = BARE.includes(path) || path.startsWith('/s/');
+  const bare = BARE.includes(path) || path.startsWith('/s/') || path.startsWith('/p/');
   const admin = user?.role === 'admin';
   // each role sees only the document types and pages it can use (the server checks the same rules)
   const MODULES = ALL_MODULES.filter((m) => canUseType(user, m.slug));

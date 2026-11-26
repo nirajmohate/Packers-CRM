@@ -1,4 +1,5 @@
 'use client';
+import ShareButtons from '@/components/ShareButtons';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useMemo, useState } from 'react';
@@ -372,6 +373,8 @@ function DocList() {
           <div className="grid gap-2">
             <Link href={`/docs/${type}/view?id=${rowMenu.id}`} className="btn bg-sky-600 text-white hover:bg-sky-700"><Eye size={17} />View <Hi t="View" className="text-xs text-white/90" /></Link>
             <Link href={`/docs/${type}/edit?id=${rowMenu.id}`} className="btn bg-amber-500 text-white hover:bg-amber-600"><Pencil size={17} />Edit <Hi t="Edit" className="text-xs text-white/90" /></Link>
+            <p className="pt-1 text-xs font-semibold text-slate-500">Share with customer <span lang="hi" className="font-normal">· ग्राहक को भेजें</span> (message + PDF link)</p>
+            <ShareButtons rec={rowMenu} onDone={() => setRowMenu(null)} onError={(m) => { setRowMenu(null); setPdfErr(m); }} />
             {canDelete(me) && <button onClick={async () => { const d = rowMenu; setRowMenu(null); await askDelete(d); }} className="btn border-2 border-red-200 bg-red-50 text-red-700 hover:bg-red-100"><Trash2 size={17} />Delete <span lang="hi" className="text-xs font-normal">· हटाएं</span></button>}
             {convertTo.length > 0 && <p className="pt-2 text-xs font-semibold text-slate-500">Create from this {cfg.title.toLowerCase()} (details are copied)</p>}
             {convertTo.map((t) => {

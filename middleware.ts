@@ -2,8 +2,8 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { jwtVerify } from 'jose';
 import { areaOfPath, canSee, canUseType } from './lib/roles';
 
-// '/s' is the customer survey form opened from a one-time link (no login; the API checks the link)
-const PUBLIC = ['/login', '/setup', '/offline.html', '/s'];
+// '/s' is the customer survey form opened from a one-time link, '/p' a customer's PDF link (no login; the API checks the link)
+const PUBLIC = ['/login', '/setup', '/offline.html', '/s', '/p'];
 
 /** Page gate only: sends signed-out visitors to the login page. The API checks every request against the database. */
 export async function middleware(req: NextRequest) {

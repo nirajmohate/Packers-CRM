@@ -177,14 +177,14 @@ function Leads() {
     <div><label className="label">{label}</label><select className="input" value={value} onChange={(e) => on(e.target.value)}><option value="">{all}</option>{opts.map((o) => <option key={o}>{o}</option>)}</select></div>
   );
   const field = (k: keyof LeadInput, label: string, extra: React.InputHTMLAttributes<HTMLInputElement> = {}, half = true) => (
-    <div className={half ? '' : 'col-span-2'}>
+    <div className={half ? 'col-span-2 min-[380px]:col-span-1' : 'col-span-2'}>
       <label className="label" htmlFor={'l-' + k}>{label}</label>
       <input id={'l-' + k} className={`input ${errs[k] ? 'border-red-400' : ''}`} value={form?.v[k] ?? ''} onChange={(e) => setV(k, e.target.value)} {...extra} />
       {errs[k] && <p className="mt-1 text-xs text-red-600">{errs[k]}</p>}
     </div>
   );
   const pick = (k: keyof LeadInput, label: string, opts: readonly string[], blank = 'Choose') => (
-    <div>
+    <div className="col-span-2 min-[380px]:col-span-1">
       <label className="label" htmlFor={'l-' + k}>{label}</label>
       <select id={'l-' + k} className="input" value={form?.v[k] ?? ''} onChange={(e) => setV(k, e.target.value)}>{blank && <option value="">{blank}</option>}{opts.map((o) => <option key={o}>{o}</option>)}</select>
     </div>

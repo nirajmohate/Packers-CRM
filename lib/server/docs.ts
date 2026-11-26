@@ -10,7 +10,8 @@ import { cleanData, validateDoc } from '../validateDoc';
 import { GOODS_KEY, cleanGoods } from '../goods';
 import { audit } from './audit';
 import { ApiError } from './http';
-import { Branch, Counter, Doc } from './models';
+import { Asset, Branch, Counter, Doc } from './models';
+import { effectiveCompany, effectiveTerms } from '../settingsFn';
 import { loadBundle } from './settings';
 
 type Rec = Record<string, any>;
@@ -339,4 +340,50 @@ export async function listChanges(user: SessionUser, after: Date) {
 
 export async function getDoc(user: SessionUser, id: string) {
   return docOut(await loadDoc(user, id));
+}
+
+/* ---------- share links ---------- */
+/** Staff check before a share link is made: the same rules as opening the document. */
+export async function shareableDoc(user: SessionUser, id: string) {
+  const d = await loadDoc(user, id);
+  return { id: String(d._id), type: String(d.type), number: String(d.number), branchId: String(d.branchId) };
+}
+
+async function assetDataUrl(id: string | undefined, branchId: string) {
+  if (!id || !Types.ObjectId.isValid(id)) return undefined;
+  const a = (await Asset.findById(id).lean()) as Rec | null;
+  if (!a || (a.scope !== 'global' && a.scope !== branchId) || !/^image\/(png|jpe?g|webp)$/.test(String(a.mime))) return undefined;
+  const raw = a.data as { buffer?: Uint8Array } & Uint8Array;
+  return `data:${a.mime};base64,${Buffer.from((raw.buffer ?? raw) as ArrayBufferLike).toString('base64')}`;
+}
+
+/**
+ * What a customer's PDF link needs: this one document, the payments against it (bills) or its bill (receipts),
+ * the branch, the company details and images that are printed on the PDF. Nothing else is sent.
+ */
+export async function publicDocBundle(id: string) {
+  const gone = new ApiError(410, 'This link has expired or the document was removed. Please ask the company for a new link.', undefined, 'link_gone');
+  if (!Types.ObjectId.isValid(id)) throw gone;
+  const d = (await Doc.findOne({ _id: id, type: IN_USE, ...live }).lean()) as Rec | null;
+  if (!d) throw gone;
+  const rec = docOut(d);
+  let related: Rec[] = [];
+  if (rec.type === 'bill') related = await receiptsOf(rec.id);
+  else if (rec.type === 'receipt' && rec.data.againstId && Types.ObjectId.isValid(rec.data.againstId)) {
+    const bill = (await Doc.findOne({ _id: rec.data.againstId, type: 'bill', ...live }).lean()) as Rec | null;
+    if (bill && String(bill.branchId) === String(rec.branchId)) related = [bill, ...(await receiptsOf(String(bill._id)))].filter((r) => String(r._id) !== rec.id);
+  }
+  const [bundle, branch] = await Promise.all([loadBundle(), Branch.findById(rec.branchId).lean() as Promise<Rec | null>]);
+  const company = effectiveCompany(bundle, rec.branchId);
+  const cfg = BY_SLUG[rec.type];
+  const bid = String(rec.branchId ?? '');
+  const [logo, stamp, signature] = await Promise.all([assetDataUrl(company.logoId, bid), assetDataUrl(company.stampId, bid), assetDataUrl(company.signatureId, bid)]);
+  return {
+    doc: rec,
+    related: related.map(docOut),
+    branch: branch ? { id: String(branch._id), name: String(branch.name ?? ''), code: String(branch.code ?? ''), city: String(branch.city ?? ''), address: String(branch.address ?? ''), phone: String(branch.phone ?? '') } : undefined,
+    company,
+    terms: effectiveTerms(bundle, rec.type, rec.branchId, cfg?.terms ?? []),
+    images: { logo, stamp, signature },
+  };
 }

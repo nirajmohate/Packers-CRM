@@ -412,7 +412,7 @@ export default function DocForm({ cfg, initial, prefill, draftKey, leadId, leadB
     const phone = f.key === 'customerPhone' ? normalize('phone', data.customerPhone || '') : '';
     const match = phone.length === 10 ? known.get(phone) : undefined;
     const showMatch = match && (match.customerName !== (data.customerName || '') || !(data.customerName || '').trim());
-    const span = f.type === 'textarea' || f.type === 'check' ? 'col-span-2 lg:col-span-4' : f.half ? 'col-span-1' : 'col-span-2';
+    const span = f.type === 'textarea' || f.type === 'check' ? 'col-span-2 lg:col-span-4' : f.half ? 'col-span-2 min-[380px]:col-span-1' : 'col-span-2';
     return (
       <div key={f.key} className={span}>
         {f.type !== 'check' && <FieldLabel text={f.label} required={f.required} htmlFor={'f-' + f.key} />}

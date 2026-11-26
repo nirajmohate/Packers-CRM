@@ -1,4 +1,5 @@
 'use client';
+import ShareButtons from '@/components/ShareButtons';
 import Link from 'next/link';
 import { Suspense, useEffect, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
@@ -116,9 +117,14 @@ function Detail() {
       {/* actions near the top (not stuck to the bottom, the app menu is there on phones) */}
       <div className="flex gap-2">
         <button onClick={download} disabled={busy} className="btn-primary flex-1"><Download size={18} />{busy ? 'Preparing…' : 'Download PDF'}</button>
-        <button onClick={share} disabled={busy} className="btn-ghost w-12 px-0 text-emerald-600 sm:w-auto sm:px-4" aria-label="Share on WhatsApp"><MessageCircle size={20} /><span className="hidden sm:inline">WhatsApp</span></button>
+        <button onClick={share} disabled={busy} className="btn-ghost w-12 px-0 text-emerald-600 sm:w-auto sm:px-4" aria-label="Share PDF file"><MessageCircle size={20} /><span className="hidden sm:inline">Share file</span></button>
         <Link href={`/docs/${type}/edit?id=${rec.id}`} className="btn-ghost w-12 px-0 sm:w-auto sm:px-4" aria-label="Edit"><Pencil size={18} /><span className="hidden sm:inline">Edit</span></Link>
       </div>
+
+      <section className="card space-y-2 p-3">
+        <p className="text-xs font-semibold text-slate-600">Send to customer <span lang="hi" className="font-normal">· ग्राहक को भेजें</span> <span className="font-normal text-slate-500">— a short message with a PDF link, only to the number / email on this {cfg.title.toLowerCase()}</span></p>
+        <ShareButtons rec={rec} onDone={say} onError={say} />
+      </section>
 
       {/* UPI QR for the amount still due (bills / proforma) */}
       <PayQr rec={rec} cfg={cfg} money={calc.money} status={calc.status} co={co} />

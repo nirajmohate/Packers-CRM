@@ -159,10 +159,10 @@ export const MODULES: ModuleConfig[] = [
         title: 'Quotation details',
         fields: [
           { key: 'movingType', label: 'Moving type', suggestions: MOVING_TYPES, placeholder: 'Select or type moving type', half: true },
+          { key: 'customerName', label: 'Customer name', half: true },
           { key: 'companyName', label: 'Company name of party', half: true },
           { key: 'customerGst', label: 'Company GST no.', validate: 'gstin', upper: true, half: true, placeholder: '27ABCDE1234F1Z5' },
-          { key: 'customerName', label: 'Party name', half: true },
-          { key: 'customerPhone', label: 'Party mobile', type: 'tel', validate: 'phone', half: true, placeholder: '98765 43210' },
+          { key: 'customerPhone', label: 'Customer mobile', type: 'tel', validate: 'phone', half: true, placeholder: '98765 43210' },
           { key: 'customerEmail', label: 'Email', validate: 'email', half: true },
           { key: 'packingDate', label: 'Packing date', type: 'date', half: true },
           { key: 'moveDate', label: 'Moving date', type: 'date', half: true },
