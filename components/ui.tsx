@@ -81,7 +81,7 @@ export function BranchSelect({ className = '', dark = false }: { className?: str
     <label className={`flex items-center gap-1.5 ${className}`}>
       <L.MapPin size={15} className={dark ? 'text-white/80' : 'text-slate-500'} />
       <select aria-label="Branch" value={active} onChange={(e) => setActive(e.target.value)} className={`min-w-0 flex-1 rounded-lg border py-1.5 pl-2 pr-6 text-sm font-medium ${tone}`}>
-        <option value="all" className="text-slate-900">All branches</option>
+        <option value="all" className="text-slate-900">Admin (all branches)</option>
         {branches.map((b) => <option key={b.id} value={b.id} className="text-slate-900">{b.name}</option>)}
       </select>
     </label>

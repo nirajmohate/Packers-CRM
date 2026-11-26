@@ -1,5 +1,10 @@
 # Cloud Packers CRM: Stage 2 (database + login)
 
+## What changed in 0.11.1
+
+- The "Head Office" branch made by first-run setup in older versions is cleaned up automatically the next time the admin opens the app: deleted if it is empty, otherwise hidden (deactivated) with its documents kept. If an active user still belongs to it, it is left alone. Each step is in the audit log.
+- The branch dropdown's first option is now **Admin (all branches)** instead of "All branches".
+
 ## What changed in 0.11.0
 
 - **New PDF design** for every document (quotation, bill, LR, survey, packing list, vehicle condition, proforma, receipt, FOV, letters): letterhead with logo, tagline and a truck illustration, a contact strip, a rounded title badge, sections in tabbed boxes, blue tax table, amount in words, totals with a dark "Total" bar, terms box, signature area and a wave footer with page numbers.
