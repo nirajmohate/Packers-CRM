@@ -1,5 +1,5 @@
 import type { Company } from './types';
-import { BRAND } from './brand';
+import { BRAND, CLIENT_LOGOS } from './brand';
 
 const cache = new Map<string, Promise<string | undefined>>();
 
@@ -33,4 +33,11 @@ export async function loadCompanyImages(co: Pick<Company, 'logoId' | 'stampId' |
   if (uploaded) return { logo: uploaded, stamp, signature };
   const logo = await loadStatic(BRAND.logo);
   return { logo, logoRatio: logo ? BRAND.logoRatio : undefined, stamp, signature };
+}
+
+/** Client logos for the quotation PDF (missing files are skipped). */
+export async function loadClientLogos(): Promise<{ src: string; ratio: number }[]> {
+  if (typeof document === 'undefined') return [];
+  const all = await Promise.all(CLIENT_LOGOS.map(async (c) => ({ src: await loadStatic(c.file), ratio: c.ratio })));
+  return all.filter((c): c is { src: string; ratio: number } => !!c.src);
 }

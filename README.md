@@ -1,5 +1,11 @@
 # Cloud Packers CRM: Stage 2 (database + login)
 
+## What changed in 0.16.1 — client logos on quotations
+
+- Every **quotation PDF** now has an **"Our valued clients"** box (just before Terms & Conditions) with the logos of Asian Paints, Castrol, InfoVision, SBI, TPNODL, FSNL, Blue Star, JSW Steel, L'Oreal India and Netlabs. Bills and other documents are unchanged.
+- The logos are small files in `public/clients/` (about 75 KB together), so the PDF stays small.
+- To add or remove a client: put a small JPG in `public/clients/` and add or delete its line in `lib/brand.ts` → `CLIENT_LOGOS`.
+
 ## What changed in 0.16.0 — website complaints
 
 - **Complaints section** (menu → *Complaints*, plus a card on the dashboard next to *Quotations waiting for approval*). Only the **admin** and **TSMs** see it; the team does not.

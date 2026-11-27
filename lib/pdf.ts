@@ -6,6 +6,7 @@ import { amountInWords, fmtDate, fmtPhone, inrPdf } from './format';
 import { readGoods } from './goods';
 import { upiAmount, upiUri } from './upi';
 import { BRAND, SAMPLE_CONTACT } from './brand';
+import { loadClientLogos } from './images';
 
 type RGB = [number, number, number];
 type Pdf = import('jspdf').jsPDF;
@@ -171,7 +172,10 @@ async function shrink(src: string | undefined, maxPx: number, jpeg: boolean): Pr
 /* ============================================== the PDF ============================================== */
 export async function buildPdf(rec: DocRecord, cfg: ModuleConfig, ctx: PdfCtx) {
   const { company: co, branch, docs, opts } = ctx;
-  const [logo, stamp, signature] = await Promise.all([shrink(ctx.images.logo, 600, true), shrink(ctx.images.stamp, 360, false), shrink(ctx.images.signature, 360, false)]);
+  const [logo, stamp, signature, clients] = await Promise.all([
+    shrink(ctx.images.logo, 600, true), shrink(ctx.images.stamp, 360, false), shrink(ctx.images.signature, 360, false),
+    rec.type === 'quotation' ? loadClientLogos() : Promise.resolve([]),
+  ]);
   const images: PdfImages = { ...ctx.images, logo, stamp, signature };
   const { jsPDF } = await import('jspdf');
   const autoTable = (await import('jspdf-autotable')).default;
@@ -536,6 +540,33 @@ export async function buildPdf(rec: DocRecord, cfg: ModuleConfig, ctx: PdfCtx) {
     pdf.setFontSize(8.4);
     textSection('Note', pdf.splitTextToSize(notes, W - 2 * M - 8) as string[]);
   }
+  /* ----- quotation: our previous clients (logos from lib/brand.ts → CLIENT_LOGOS) ----- */
+  if (clients.length) {
+    const IW = W - 2 * M;
+    const cols = 5;
+    const cellW = (IW - 8) / cols;
+    const cellH = 16;
+    const rows = Math.ceil(clients.length / cols);
+    const h = rows * cellH + 3;
+    ensure(6.5 + h + 4);
+    const y0 = y + 6.5;
+    box(pdf, M, y0, IW, h, [255, 255, 255]);
+    tab(pdf, 'Our valued clients', M, y);
+    clients.forEach((c, i) => {
+      const r = Math.floor(i / cols);
+      const inRow = Math.min(cols, clients.length - r * cols);
+      const x0 = M + 4 + ((cols - inRow) * cellW) / 2 + (i % cols) * cellW; // a short last row is centred
+      // same visual weight for wide and square logos: equal area, within the cell
+      const maxW = cellW - 7;
+      const maxH = cellH - 4;
+      let hh = Math.min(maxH, Math.sqrt(190 / c.ratio));
+      let w = hh * c.ratio;
+      if (w > maxW) { w = maxW; hh = w / c.ratio; }
+      try { pdf.addImage(c.src, 'JPEG', x0 + (cellW - w) / 2, y0 + 1.5 + r * cellH + (cellH - hh) / 2, w, hh, `client${i}`, 'FAST'); } catch { /* skip a bad picture */ }
+    });
+    y = y0 + h + 4;
+  }
+
   if (ctx.terms.length) {
     pdf.setFont('helvetica', 'normal').setFontSize(8.2);
     const lines = ctx.terms.flatMap((t, i) => {
