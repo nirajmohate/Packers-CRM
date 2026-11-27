@@ -86,3 +86,52 @@ export async function linkLeadToDoc(user: SessionUser, leadId: unknown, doc: { i
     console.error('[leads] could not link document', e);
   }
 }
+
+/**
+ * A customer who fills the public survey form is added to Customers (leads) of that branch:
+ * a new lead (source "Survey link"), or, when the same mobile number is already a lead, the survey is added
+ * to it and its empty boxes are filled. Never throws: the survey itself is already saved.
+ */
+export async function leadFromSurvey(who: SessionUser, branchId: string, data: Record<string, string>, doc: { id: string; number: string }) {
+  try {
+    const t = (v: unknown, max: number) => String(v ?? '').replace(/[\u0000-\u001f\u007f]+/g, ' ').trim().slice(0, max);
+    const phone = normalize('phone', t(data.customerPhone, 20));
+    const emailRaw = normalize('email', t(data.customerEmail, 120));
+    const fields: Rec = {
+      name: t(data.customerName, 80), phone, email: /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(emailRaw) ? emailRaw : '',
+      fromCity: t(data.fromCity, 60), toCity: t(data.toCity, 60), fromAddress: t(data.fromAddress, 300), toAddress: t(data.toAddress, 300),
+      moveDate: /^\d{4}-\d{2}-\d{2}$/.test(t(data.moveDate, 10)) ? t(data.moveDate, 10) : '',
+    };
+    const ref = { type: 'survey', id: doc.id, number: doc.number };
+    const existing = phone ? ((await Lead.findOne({ branchId, phone }).sort({ createdAt: -1 }).lean()) as Rec | null) : null;
+    if (existing) {
+      const $set: Rec = { updatedByName: who.name };
+      for (const [k, v] of Object.entries(fields)) if (v && !existing[k]) $set[k] = v;
+      await Lead.updateOne({ _id: existing._id }, { $set, $push: { docs: { $each: [ref], $slice: -50 } } });
+      await audit(who, { action: 'update', entity: 'lead', entityId: String(existing._id), branchId, summary: `Customer ${existing.name || phone} filled the survey form (${doc.number})` });
+      return;
+    }
+    const today = new Date(Date.now() + 5.5 * 3600_000).toISOString().slice(0, 10);
+    const made = await Lead.create({ ...fields, branchId, leadDate: today, leadSource: 'Survey link', status: 'Lead generated', remarks: t(data.remarks, 1000), docs: [ref], createdBy: who.id, createdByName: who.name, updatedByName: who.name });
+    await audit(who, { action: 'create', entity: 'lead', entityId: String(made._id), branchId, summary: `Added customer ${fields.name || phone} from the survey form (${doc.number})` });
+  } catch (e) {
+    console.error('[leads] could not add the survey customer', e);
+  }
+}
+
+/**
+ * The saved customer a quotation / bill is for: the one picked in the form (same branch), or else the
+ * customer of that branch with the same mobile number. null when the customer was never added.
+ */
+export async function resolveLead(branchId: string, leadId: unknown, phoneIn: unknown): Promise<string | null> {
+  if (typeof leadId === 'string' && Types.ObjectId.isValid(leadId)) {
+    const l = (await Lead.findById(leadId).lean()) as Rec | null;
+    if (l && l.branchId === branchId) return String(l._id);
+  }
+  const phone = normalize('phone', String(phoneIn ?? '').slice(0, 20));
+  if (phone.replace(/\D/g, '').length >= 10) {
+    const l = (await Lead.findOne({ branchId, phone }).sort({ createdAt: -1 }).lean()) as Rec | null;
+    if (l) return String(l._id);
+  }
+  return null;
+}

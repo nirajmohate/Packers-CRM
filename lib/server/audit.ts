@@ -3,7 +3,7 @@ import { Audit } from './models';
 
 export interface AuditInput {
   action: string;
-  entity: 'doc' | 'user' | 'branch' | 'settings' | 'asset' | 'auth' | 'import' | 'lead';
+  entity: 'doc' | 'user' | 'branch' | 'settings' | 'asset' | 'auth' | 'import' | 'lead' | 'complaint';
   entityId?: string;
   docType?: string;
   docNumber?: string;

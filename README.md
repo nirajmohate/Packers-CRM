@@ -1,5 +1,65 @@
 # Cloud Packers CRM: Stage 2 (database + login)
 
+## What changed in 0.16.0 — website complaints
+
+- **Complaints section** (menu → *Complaints*, plus a card on the dashboard next to *Quotations waiting for approval*). Only the **admin** and **TSMs** see it; the team does not.
+- **Automatic routing.** Every complaint from the cloudpackers.com form is matched against the CRM: first the invoice / consignment / LR number, then mobile number and email, then (only if nothing else was given) the name. If all matches point to one branch, it goes straight to that branch's TSM (status *Forwarded*). If nothing matches, or matches point to different branches, it stays with the admin (status *New*).
+- **Admin forwarding.** The admin opens the complaint, checks the place with *Open in Maps*, and forwards it. The branch is pre-selected from the location (e.g. PCMC / Wakad → Pune, Thane → Mumbai, Gurgaon → Delhi) but the admin decides.
+- **Statuses:** New, Forwarded, In progress, Called - no answer, Resolved, Closed. Every change or note is kept in the history.
+- **48-hour reminder:** an open complaint with no action for 48 hours shows a red badge, and the dashboard shows a popup once a day until someone acts. Any status change or note restarts the 48 hours.
+
+### Connecting the website form (one time)
+
+1. In Vercel → Project → Settings → Environment Variables add `COMPLAINT_KEY` = a long random text (at least 24 characters, e.g. from `node -e "console.log(require('crypto').randomBytes(24).toString('hex'))"`). Redeploy.
+2. Open `website/crm-complaint-hook.php`, paste the **same** key into `CRM_COMPLAINT_KEY`, and upload the file next to the PHP file that the complaint form posts to (its `action`).
+3. In that PHP file, **after** the email is sent, add these two lines. Nothing else is changed or removed (your mail ID / password stay as they are):
+
+```php
+require_once __DIR__ . '/crm-complaint-hook.php';
+send_complaint_to_crm($_POST);
+```
+
+If the CRM is down, the website still sends the email as before; the hook waits at most 5 seconds and only writes to the PHP error log.
+
+## What changed in 0.15.0 — extra security
+
+- **Two-step login for the admin** (Account → *Security · two-step login*): after the password, a 6-digit code from a free authenticator app (Google / Microsoft Authenticator). Standard TOTP, no extra package; the secret is stored encrypted with `AUTH_SECRET`; a code cannot be used twice; 8 one-time **backup codes** for a lost phone; wrong codes count towards the 15-minute lock. Lost phone *and* backup codes: `npm run reset-password -- <login id> <new password>` also turns two-step login off.
+- **New-device alert**: when an admin account signs in on a phone/computer it never used before, the admin dashboard shows "New sign-in … Was this you?" with **Yes** / **No, sign it out** (signs that device out at once). Optional Telegram and/or email message too: set `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID`, and/or `BREVO_API_KEY` + `ALERT_EMAIL` + `ALERT_FROM_EMAIL` in Vercel (see `.env.example`).
+- **Password again for sensitive actions** (valid 10 minutes on that device): creating an account, setting a password, switching an account off or changing its role/branch, deleting a branch, *Set up the 17 branches*, downloading the backup, and changing two-step login.
+- Editing only a user's **name** no longer signs them out (it happened because the form also sent the unchanged role and branch).
+
+## What changed in 0.14.0 — login made simple
+
+- **Setup page once, for ever**: the first visit shows the setup page; the admin types name, login ID and password (used from then on). Setup also adds the **17 Cloud Packers branches** with their contact details and the company email. After that nobody ever sees setup again (a database lock stops a second setup even if two people press at the same time).
+- **The admin makes every account**: Users → Add user: name, login ID, role, branch, **password typed twice** (show/hide, no auto-capitals, no spaces at the ends). After saving, the exact login ID and password are shown to copy and send.
+- **Nobody else changes passwords**: no "choose a new password" page at first sign-in any more, no change-password for branch owners or Team; their account menu says "To change your password, contact the admin". The admin changes anyone's password with **Change password** (typed twice); all their devices are signed out.
+- Team accounts: the admin **and** the branch owner (My team) can create their branch's one Team account, edit it, set its password (typed twice), switch it off and sign out its devices — as before.
+- **Start clean**: `npm run wipe-all` (see below) deletes all old data so the site starts again at the setup page. `seed:admin` and `seed:demo` were removed.
+
+## What changed in 0.13.1
+
+- **The 17 Cloud Packers branches**: Branches → *Set up the 17 branches* shows a preview and, on *Apply*, adds or updates Agartala, Ahmedabad, Balasore, Bangalore, Bhadrak, Bhubaneswar, Chennai, Delhi, Durgapur, Hyderabad, Indore, Kochi, Kolkata, Mumbai, Pune, Ranchi and Visakhapatnam with the address and phone(s) from cloudpackers.com (list in `lib/branchPresets.ts`). Existing branches keep their name and code (document numbers unchanged). Branches not in the list are deleted when empty, otherwise switched off with their data kept. The company email info@cloudpackers.com is saved if none is set.
+- Branches have an optional **second phone**; both numbers print on the PDF.
+
+## What changed in 0.13.0
+
+- **Logged-in devices** (like Instagram's login activity): every sign-in is recorded as a device (phone model / system, browser, IP, city from Vercel, signed-in time, last active). Branches shows, under each branch, the branch owner's and Team account's devices with **Sign out** per device and **Sign out all**; admin accounts are at the top. A branch owner sees their branch's devices in My team. Resetting a password, changing a role/branch or switching a user off signs out all their devices. Only a hash of each device id is stored.
+  - **After this update everyone must sign in once again** (old sign-ins had no device record).
+- **Admin and Team accounts**: Users has filters (All / Admin / Branch owners / Team accounts) and a list of branches without a Team account, each with a one-tap "create".
+- **Customer first**: a new quotation or bill can only be made for a customer saved in Customers. The form opens with "First add the customer": search your customers or *Add new customer* (after saving you come straight back with the details filled). Converting from a survey / quotation and Duplicate link the customer with the same mobile automatically. The server refuses a quotation / bill without a saved customer of that branch.
+  - The Team account can now see, add and edit its branch's customers (no delete, no export).
+  - The "From documents" customer list is removed; Customers shows only saved customers / leads.
+- **Smaller PDFs**: logo, stamp and signature are resized to the size they print at (logo as JPEG), and the PDF is compressed — normally well under 1 MB.
+
+## What changed in 0.12.0
+
+- **Hindi removed** from the whole app (labels, statuses, menus, dialogs). Hindi item names still work when typing in the item search.
+- **Cancel with a reason, in two steps** (like delete): choosing *Cancelled* in any status dropdown, in the edit form, or "Cancel bill" asks 1) why, 2) "Are you sure?". The reason, who and when are shown on the document page and saved in the audit log; the server refuses to cancel without a reason. Choosing another status later clears it.
+- **Preview** button on every document page: shows the PDF inside the app (Android phones open it in a new tab, since Android browsers cannot show a PDF inside a page).
+- **Survey link form** redesigned: brand header with branch and phone, steps, numbered cards, larger tap targets and a Send button that stays at the bottom on phones.
+- **Survey customers go to Customers**: when a customer sends the survey form, they are added to *Leads & customers* of that branch (source "Survey link"). If the same mobile number is already a lead, the survey is added to it and only its empty boxes are filled.
+- **Phones**: the Documents sheet no longer squeezes buttons (they move to their own row when needed); text is slightly smaller on phones (14px base); text boxes stay 16px on iPhone so Safari does not zoom in.
+
 ## What changed in 0.11.1
 
 - The "Head Office" branch made by first-run setup in older versions is cleaned up automatically the next time the admin opens the app: deleted if it is empty, otherwise hidden (deactivated) with its documents kept. If an active user still belongs to it, it is left alone. Each step is in the audit log.
@@ -8,7 +68,7 @@
 ## What changed in 0.11.0
 
 - **New PDF design** for every document (quotation, bill, LR, survey, packing list, vehicle condition, proforma, receipt, FOV, letters): letterhead with logo, tagline and a truck illustration, a contact strip, a rounded title badge, sections in tabbed boxes, blue tax table, amount in words, totals with a dark "Total" bar, terms box, signature area and a wave footer with page numbers.
-- **Branch contact on PDFs**: mobile and address come from the branch (Branches → edit), email from Settings (same for all branches). While these are empty, SAMPLE details are printed (+91 98765 43210, info@cloudpackers.in, "Office No. 12, Main Road, <city>"); change them in the app, or the defaults in `lib/brand.ts`.
+- **Branch contact on PDFs**: mobile and address come from the branch (Branches → edit), email from Settings (same for all branches). While these are empty, SAMPLE details are printed (+91 98765 43210, info@cloudpackers.com, "Office No. 12, Main Road, <city>"); change them in the app, or the defaults in `lib/brand.ts`.
 - **Share with customer** (⋯ menu and the document page): WhatsApp and Email buttons. They open a short message addressed only to the mobile / email saved on that document, with a link to the PDF. Buttons stay disabled until the number / email is filled in.
   - The PDF link (`/p/...`) is signed with `AUTH_SECRET` (HMAC-SHA256), opens only that one document read-only, expires after 90 days, stops working if the document is deleted, is rate-limited and not indexed. Every link made is in the audit log. Changing `AUTH_SECRET` cancels all links.
 - Quotation form: **Customer name** now comes first (before company name and GST), and "Party name / Party mobile" are renamed "Customer name / Customer mobile".
@@ -181,13 +241,10 @@ There is no built-in account. The admin is whatever you typed on the first-time 
 ```bash
 npm run list-users
 npm run reset-password -- <login id> <new password>      # example: npm run reset-password -- admin MyNewPass123
-npm run seed:admin -- <login id> <password>              # creates a new admin if there is none
 ```
 
 ### Optional helpers
-- `npm run seed:demo`  : sample branches, managers and documents (admin / Admin@12345, managers pune, mumbai, nashik, bengaluru, delhi / Manager@123). Test databases only.
-- `npm run seed:admin -- admin Strong@123` : create the admin from the command line instead of the setup page.
-- `BASE_URL=http://localhost:3000 npm run test:api` : 134 API checks (use an EMPTY database; it creates an admin, branches and users).
+- `npm run wipe-all` : shows what is in the database; `npm run wipe-all -- <database name>` DELETES EVERYTHING (users, branches, documents, customers, settings, audit log) so the site starts again from the setup page.
 
 ### If `npm run dev` says a package cannot be found (for example `jose`)
 The install did not finish, or an old `node_modules` from the earlier version is still there. Stop the server, then:

@@ -2,7 +2,8 @@
 import { Types } from 'mongoose';
 import type { AuditChange, Company, DocRecord, ModuleConfig, Row, SessionUser } from '../types';
 import { BY_SLUG, MODULES } from '../config';
-import { linkLeadToDoc } from './leads';
+import { linkLeadToDoc, resolveLead } from './leads';
+import { NEEDS_CUSTOMER } from '../leads';
 import { TEAM_TYPES, canDelete, canUseType, isBranchUser, isTeam } from '../roles';
 import { billInfo } from '../ledger';
 import { fyOf, formatNumber, isDaily } from '../numbering';
@@ -27,6 +28,8 @@ export const docOut = (d: Rec): DocRecord => ({
   branchId: d.branchId, deletedAt: iso(d.deletedAt), createdAt: iso(d.createdAt) as string, updatedAt: iso(d.updatedAt) as string,
   rev: d.rev, createdByName: d.createdByName, updatedByName: d.updatedByName, data: d.data ?? {}, items: d.items ?? [],
   ...(d.deletedAt ? { deleteReason: d.deleteReason ?? '', deletedByName: d.deletedByName ?? '' } : {}),
+  ...(d.leadId ? { leadId: String(d.leadId) } : {}),
+  ...(d.status === 'Cancelled' && d.cancelReason ? { cancelReason: d.cancelReason, cancelledAt: iso(d.cancelledAt), cancelledByName: d.cancelledByName ?? '' } : {}),
 });
 
 /** branch owners and the team see only their own branch */
@@ -164,10 +167,13 @@ export async function createDoc(user: SessionUser, input: Rec) {
   const branch = Types.ObjectId.isValid(branchId) ? ((await Branch.findById(branchId).lean()) as Rec | null) : null;
   if (!branch || branch.active === false) throw bad('Please choose an active branch', { branchId: 'Choose a branch' });
   const { data, items } = await validated(cfg, input, branchId);
+  // quotations and bills only for a customer saved in Customers first (picked in the form, or same mobile number)
+  const leadId = NEEDS_CUSTOMER.has(cfg.slug) ? await resolveLead(branchId, input.leadId, data.customerPhone) : null;
+  if (NEEDS_CUSTOMER.has(cfg.slug) && !leadId) throw new ApiError(422, `First add this customer in Customers, then make the ${cfg.title.toLowerCase()}.`, undefined, 'need_customer');
   const status = cfg.slug === 'bill' ? 'Unpaid' : cfg.statuses.includes(input.status) ? input.status : cfg.statuses[0];
   const rules = (await loadBundle()).global;
   const fy = fyOf(input.docDate);
-  const base = { type: cfg.slug, status, docDate: input.docDate, branchId, createdBy: user.id, createdByName: user.name, updatedByName: user.name, rev: 1, data, items, meta: {} };
+  const base = { type: cfg.slug, status, docDate: input.docDate, branchId, createdBy: user.id, createdByName: user.name, updatedByName: user.name, rev: 1, data, items, meta: {}, ...(leadId ? { leadId } : {}) };
 
   let created: Rec | null = null;
   const manual = typeof input.number === 'string' ? input.number.trim().slice(0, 60) : '';
@@ -188,7 +194,7 @@ export async function createDoc(user: SessionUser, input: Rec) {
   if (cfg.slug === 'bill') await refreshBillMeta(String(made._id));
   if (cfg.slug === 'receipt') await refreshBillMeta(data.againstId);
   await audit(user, { action: 'create', entity: 'doc', entityId: String(made._id), docType: cfg.slug, docNumber: made.number, branchId, summary: `Created ${cfg.title} ${made.number}` });
-  if (input.leadId) await linkLeadToDoc(user, input.leadId, { id: String(made._id), type: cfg.slug, number: String(made.number), branchId });
+  if (leadId || input.leadId) await linkLeadToDoc(user, leadId || input.leadId, { id: String(made._id), type: cfg.slug, number: String(made.number), branchId });
   return docOut((await Doc.findById(made._id).lean()) as Rec);
 }
 
@@ -226,8 +232,15 @@ export async function updateDoc(user: SessionUser, id: string, input: Rec) {
   const status = cfg.slug === 'bill' ? cur.status : cfg.statuses.includes(input.status) ? input.status : cur.status;
   const next = { number, status, docDate: input.docDate as string, data, items };
   const changes = diffDoc(cfg, cur, next);
+  // cancelling from the edit form also needs a reason; leaving "Cancelled" clears it
+  const cancelReason = typeof input.cancelReason === 'string' ? input.cancelReason.replace(/\s+/g, ' ').trim().slice(0, 300) : '';
+  const cancelling = status === 'Cancelled' && cur.status !== 'Cancelled';
+  if (cancelling && cancelReason.length < 3) throw new ApiError(422, 'Please write why this is being cancelled', { status: 'Write a reason for cancelling' });
+  const unset: Rec = { ...(number !== cur.number ? { seq: '' } : {}), ...(status !== 'Cancelled' && cur.status === 'Cancelled' ? { cancelReason: '', cancelledAt: '', cancelledByName: '' } : {}) };
+  const extra = cancelling ? { cancelReason, cancelledAt: new Date(), cancelledByName: user.name } : {};
+  if (cancelling) changes.push({ field: 'Cancel reason', from: '', to: cancelReason });
   try {
-    const res = await Doc.updateOne({ _id: id, rev: cur.rev }, { $set: { ...next, fy: number === cur.number ? cur.fy : fyOf(next.docDate), updatedByName: user.name }, $inc: { rev: 1 }, ...(number !== cur.number ? { $unset: { seq: '' } } : {}) });
+    const res = await Doc.updateOne({ _id: id, rev: cur.rev }, { $set: { ...next, ...extra, fy: number === cur.number ? cur.fy : fyOf(next.docDate), updatedByName: user.name }, $inc: { rev: 1 }, ...(Object.keys(unset).length ? { $unset: unset } : {}) });
     if (res.matchedCount === 0) throw new ApiError(409, 'Someone else changed this document. Reload it and try again.', undefined, 'conflict');
   } catch (e) {
     if ((e as { code?: number }).code === 11000) throw new ApiError(409, 'This number is already used', { number: 'This number is already used' });
@@ -242,7 +255,7 @@ export async function updateDoc(user: SessionUser, id: string, input: Rec) {
   return docOut((await Doc.findById(id).lean()) as Rec);
 }
 
-export async function setStatus(user: SessionUser, id: string, status: string) {
+export async function setStatus(user: SessionUser, id: string, status: string, reasonIn?: unknown) {
   const cur = await loadDoc(user, id);
   const cfg = BY_SLUG[cur.type];
   if (!cfg) throw new ApiError(400, 'Unknown document type');
@@ -254,9 +267,15 @@ export async function setStatus(user: SessionUser, id: string, status: string) {
     else throw new ApiError(400, 'A bill\'s status follows its payments');
   } else if (!cfg.statuses.includes(status)) throw new ApiError(400, 'Unknown status');
   if (next === cur.status) return docOut(cur);
-  await Doc.updateOne({ _id: id }, { $set: { status: next, updatedByName: user.name }, $inc: { rev: 1 } });
+  // cancelling needs a reason (asked in two steps in the app); it is shown on the document and in the audit log
+  const reason = typeof reasonIn === 'string' ? reasonIn.replace(/\s+/g, ' ').trim().slice(0, 300) : '';
+  if (next === 'Cancelled' && reason.length < 3) throw new ApiError(422, 'Please write why this is being cancelled', { reason: 'Write a reason (at least 3 letters)' });
+  const update = next === 'Cancelled'
+    ? { $set: { status: next, updatedByName: user.name, cancelReason: reason, cancelledAt: new Date(), cancelledByName: user.name }, $inc: { rev: 1 } }
+    : { $set: { status: next, updatedByName: user.name }, $unset: { cancelReason: '', cancelledAt: '', cancelledByName: '' }, $inc: { rev: 1 } };
+  await Doc.updateOne({ _id: id }, update);
   if (cfg.slug === 'bill') await refreshBillMeta(id);
-  await audit(user, { action: 'status', entity: 'doc', entityId: id, docType: cfg.slug, docNumber: cur.number, branchId: cur.branchId, summary: `${cfg.title} ${cur.number}: ${cur.status} to ${next}`, changes: [{ field: 'Status', from: cur.status, to: next }] });
+  await audit(user, { action: 'status', entity: 'doc', entityId: id, docType: cfg.slug, docNumber: cur.number, branchId: cur.branchId, summary: `${cfg.title} ${cur.number}: ${cur.status} to ${next}${reason && next === 'Cancelled' ? `. Reason: ${reason}` : ''}`, changes: [{ field: 'Status', from: cur.status, to: next }] });
   return docOut((await Doc.findById(id).lean()) as Rec);
 }
 
@@ -381,7 +400,7 @@ export async function publicDocBundle(id: string) {
   return {
     doc: rec,
     related: related.map(docOut),
-    branch: branch ? { id: String(branch._id), name: String(branch.name ?? ''), code: String(branch.code ?? ''), city: String(branch.city ?? ''), address: String(branch.address ?? ''), phone: String(branch.phone ?? '') } : undefined,
+    branch: branch ? { id: String(branch._id), name: String(branch.name ?? ''), code: String(branch.code ?? ''), city: String(branch.city ?? ''), address: String(branch.address ?? ''), phone: String(branch.phone ?? ''), phone2: String(branch.phone2 ?? '') } : undefined,
     company,
     terms: effectiveTerms(bundle, rec.type, rec.branchId, cfg?.terms ?? []),
     images: { logo, stamp, signature },

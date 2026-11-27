@@ -25,7 +25,7 @@ async function main() {
   if (!u) { console.log(`No user "${loginId}". Existing login IDs: ${users.map((x) => x.loginId).join(', ') || '(none)'}`); process.exitCode = 1; return; }
   const problem = passwordProblem(password || '', loginId);
   if (problem) { console.log(problem + '. Example: npm run reset-password -- ' + loginId + ' MyNewPass123'); process.exitCode = 1; return; }
-  await User.updateOne({ _id: u._id }, { $set: { passwordHash: await hashPassword(password), mustChangePassword: false, active: true, failedLogins: 0 }, $unset: { lockUntil: '' }, $inc: { sv: 1 } });
-  console.log(`Password for "${loginId}" changed. You can sign in now.`);
+  await User.updateOne({ _id: u._id }, { $set: { passwordHash: await hashPassword(password), mustChangePassword: false, active: true, failedLogins: 0 }, $unset: { lockUntil: '', twoFactor: '' }, $inc: { sv: 1 } });
+  console.log(`Password for "${loginId}" changed${u.twoFactor ? ' and two-step login turned OFF (turn it on again in Security)' : ''}. You can sign in now.`);
 }
 main().catch((e) => { console.error(e.message || e); process.exitCode = 1; }).finally(() => mongoose.disconnect());

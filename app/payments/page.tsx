@@ -8,7 +8,7 @@ import { fmtDate, fmtPhone, inr, todayISO } from '@/lib/format';
 import { num, round2 } from '@/lib/calc';
 import { useDocs, useHomeState, useLiveDocs } from '@/lib/store';
 import PaymentSheet from '@/components/PaymentSheet';
-import { Hi, Toast } from '@/components/ui';
+import { Toast } from '@/components/ui';
 import { LoadCounter, LoadMore, useInfinite } from '@/components/Infinite';
 
 export default function Payments() {
@@ -38,14 +38,14 @@ export default function Payments() {
   return (
     <div className="space-y-4">
       <div className="rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-500 p-4 text-white shadow-sm">
-        <h1 className="text-xl font-bold">Payments <Hi t="Payments" className="text-base text-white/85" /></h1>
+        <h1 className="text-xl font-bold">Payments</h1>
         <p className="text-xs text-white/85">Outstanding bills and money received</p>
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <div className="card border-l-4 border-l-amber-500 p-3"><p className="text-xs text-slate-500">Outstanding <span lang="hi">· बाकी</span></p><p className="mt-1 truncate text-base font-bold sm:text-lg text-amber-700">{inr(outstanding)}</p></div>
-        <div className="card border-l-4 border-l-red-500 p-3"><p className="text-xs text-slate-500">Overdue <span lang="hi">· देर से</span></p><p className="mt-1 truncate text-base font-bold sm:text-lg text-red-600">{inr(overdue)}</p></div>
-        <div className="card col-span-2 border-l-4 border-l-emerald-500 p-3 sm:col-span-1"><p className="text-xs text-slate-500">Received this month <span lang="hi">· इस महीने मिला</span></p><p className="mt-1 truncate text-base font-bold sm:text-lg text-emerald-700">{inr(thisMonth)}</p></div>
+        <div className="card border-l-4 border-l-amber-500 p-3"><p className="text-xs text-slate-500">Outstanding</p><p className="mt-1 truncate text-base font-bold sm:text-lg text-amber-700">{inr(outstanding)}</p></div>
+        <div className="card border-l-4 border-l-red-500 p-3"><p className="text-xs text-slate-500">Overdue</p><p className="mt-1 truncate text-base font-bold sm:text-lg text-red-600">{inr(overdue)}</p></div>
+        <div className="card col-span-2 border-l-4 border-l-emerald-500 p-3 sm:col-span-1"><p className="text-xs text-slate-500">Received this month</p><p className="mt-1 truncate text-base font-bold sm:text-lg text-emerald-700">{inr(thisMonth)}</p></div>
       </div>
 
       <div className="relative">
@@ -54,7 +54,7 @@ export default function Payments() {
       </div>
 
       <section>
-        <h2 className="mb-2 font-semibold text-slate-900">Bills to collect ({rows.length}) <span lang="hi" className="text-sm font-normal text-slate-500">· वसूली बाकी</span></h2>
+        <h2 className="mb-2 font-semibold text-slate-900">Bills to collect ({rows.length})</h2>
         {rows.length === 0 ? <div className="card p-6 text-center text-sm text-slate-500">All bills are paid.</div> : (
           <>
             <div className="card overflow-x-auto">
@@ -88,7 +88,7 @@ export default function Payments() {
       </section>
 
       <section>
-        <h2 className="mb-2 font-semibold text-slate-900">Receipts ({receipts.length}) <span lang="hi" className="text-sm font-normal text-slate-500">· मिली रकम</span></h2>
+        <h2 className="mb-2 font-semibold text-slate-900">Receipts ({receipts.length})</h2>
         {receipts.length === 0 ? <div className="card p-6 text-center text-sm text-slate-500">No receipts yet.</div> : (
           <>
             <div className="card overflow-x-auto">

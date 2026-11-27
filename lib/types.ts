@@ -99,6 +99,12 @@ export interface DocRecord {
   /** why it was deleted and by whom (shown in the recycle bin) */
   deleteReason?: string;
   deletedByName?: string;
+  /** why it was cancelled and by whom (status Cancelled) */
+  cancelReason?: string;
+  /** the saved customer (Customers) this document is for */
+  leadId?: string;
+  cancelledAt?: string;
+  cancelledByName?: string;
   createdAt: string;
   updatedAt: string;
   rev?: number;
@@ -108,7 +114,7 @@ export interface DocRecord {
   items: Row[];
 }
 
-export interface Branch { id: string; name: string; code: string; city: string; address: string; phone: string; active?: boolean }
+export interface Branch { id: string; name: string; code: string; city: string; address: string; phone: string; phone2?: string; active?: boolean }
 
 /** Company details. A branch can override any of these; empty means "use the company default". */
 export interface CompanyProfile {

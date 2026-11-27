@@ -1,4 +1,4 @@
-import { api, jsonBody } from '@/lib/server/http';
+import { api, ApiError, jsonBody } from '@/lib/server/http';
 import { audit } from '@/lib/server/audit';
 import { Lead } from '@/lib/server/models';
 import { LeadBody, leadBranch, leadChanges, leadOut, loadLead } from '@/lib/server/leads';
@@ -20,6 +20,7 @@ export const PATCH = api({ auth: 'user' }, async ({ req, user, params }) => {
 });
 
 export const DELETE = api({ auth: 'user' }, async ({ user, params }) => {
+  if (user.role === 'team') throw new ApiError(403, 'Only the branch owner or admin can delete a customer');
   const cur = await loadLead(user, params.id);
   await Lead.deleteOne({ _id: params.id });
   await audit(user, { action: 'delete', entity: 'lead', entityId: params.id, branchId: cur.branchId, summary: `Deleted customer ${cur.name || cur.phone} (${cur.status})` });

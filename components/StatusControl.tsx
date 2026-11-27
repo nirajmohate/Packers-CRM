@@ -1,4 +1,5 @@
 'use client';
+import { useCancelReason } from './CancelDialog';
 import { useState } from 'react';
 import type { DocRecord } from '@/lib/types';
 import { BY_SLUG } from '@/lib/config';
@@ -20,10 +21,6 @@ export const ROW_TONE: Record<Tone, string> = { red: 'bg-red-50/80 hover:bg-red-
 const SELECT_TONE: Record<Tone, string> = {
   red: 'border-red-300 bg-red-50 text-red-700', green: 'border-emerald-300 bg-emerald-50 text-emerald-800', blue: 'border-sky-300 bg-sky-50 text-sky-800',
 };
-const HI: Record<string, string> = {
-  Pending: 'बाकी', Approved: 'मंज़ूर', Rejected: 'नामंज़ूर', Unpaid: 'बकाया', Partial: 'आधा', Paid: 'भुगतान हुआ', Cancelled: 'रद्द',
-  Scheduled: 'तय', Completed: 'पूरा', 'From customer': 'ग्राहक से', 'In process': 'प्रक्रिया में', 'Link sent': 'लिंक भेजा', 'Filled by customer': 'ग्राहक ने भरा', Packed: 'पैक', Delivered: 'पहुँचा', Booked: 'बुक', 'In transit': 'रास्ते में', Draft: 'ड्राफ्ट', Sent: 'भेजा', Received: 'मिला',
-};
 
 /** Coloured dropdown showing the current status; picking another one calls `onPick`. */
 export function StatusSelect({ doc, status, onPick, disabled, wide }: { doc: DocRecord; status: string; onPick: (next: string) => void; disabled?: boolean; wide?: boolean }) {
@@ -37,7 +34,7 @@ export function StatusSelect({ doc, status, onPick, disabled, wide }: { doc: Doc
       onChange={(e) => onPick(e.target.value)} onClick={(e) => e.stopPropagation()}
       className={`min-h-[34px] cursor-pointer rounded-full border-[1.5px] py-1 pl-3 pr-8 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-brand-200 disabled:opacity-60 ${SELECT_TONE[toneOf(status)]} ${wide ? 'min-h-[40px] w-full text-sm sm:w-auto' : ''}`}
     >
-      {list.map((s) => <option key={s} value={s}>{s}{HI[s] ? ` · ${HI[s]}` : ''}</option>)}
+      {list.map((s) => <option key={s} value={s}>{s}</option>)}
     </select>
   );
 }
@@ -49,6 +46,7 @@ export function StatusSelect({ doc, status, onPick, disabled, wide }: { doc: Doc
  */
 export function useStatusChanger(): [(doc: DocRecord, current: string, next: string, balance?: number) => Promise<void>, React.ReactNode, string] {
   const [ask, confirmDialog] = useConfirm();
+  const [askCancel, cancelDialog] = useCancelReason();
   const [payFor, setPayFor] = useState<DocRecord | null>(null);
   const [toast, setToast] = useState('');
   const [busy, setBusy] = useState('');
@@ -60,12 +58,16 @@ export function useStatusChanger(): [(doc: DocRecord, current: string, next: str
     const name = doc.data[cfg.party ?? 'customerName'] || '';
     const who = <><b className="text-slate-900">{doc.number}</b>{name ? <> ({name})</> : null}</>;
     let target = next;
-    if (cfg.slug === 'bill') {
+    let reason: string | undefined;
+    if (next === 'Cancelled') {
+      // two steps: the reason, then "Are you sure?"
+      const r = await askCancel(doc);
+      if (!r) return;
+      reason = r;
+    } else if (cfg.slug === 'bill') {
       if (current === 'Cancelled') {
         if (!(await ask({ tone: 'blue', title: 'Make this bill active again?', confirmLabel: 'Yes, reinstate', message: <p>Bill {who} will be active again; its status will follow its payments.</p> }))) return;
         target = 'Unpaid';
-      } else if (next === 'Cancelled') {
-        if (!(await ask({ tone: 'red', title: 'Cancel this bill?', confirmLabel: 'Yes, cancel bill', message: <p>Bill {who} will be marked <b className="text-red-600">Cancelled</b> and left out of totals and reports.</p> }))) return;
       } else if (next === 'Paid' || next === 'Partial') {
         if (balance <= 0) { say('This bill is already fully paid.'); return; }
         const ok = await ask({
@@ -81,7 +83,7 @@ export function useStatusChanger(): [(doc: DocRecord, current: string, next: str
     } else if (!(await ask({ tone: toneOf(next) === 'red' ? 'red' : toneOf(next) === 'green' ? 'green' : 'blue', title: `Change status to ${next}?`, confirmLabel: `Yes, mark ${next}`, message: <p>{cfg.title} {who} will change from <b>{current}</b> to <b>{next}</b>.</p> }))) return;
 
     setBusy(doc.id);
-    try { await setDocStatus(doc.id, target); say(`${doc.number}: ${target === 'Unpaid' && cfg.slug === 'bill' ? 'active again' : target}`); }
+    try { await setDocStatus(doc.id, target, reason); say(`${doc.number}: ${target === 'Unpaid' && cfg.slug === 'bill' ? 'active again' : target}`); }
     catch (e) { say(e instanceof ApiFail ? e.message : 'Could not change the status. Please try again.'); }
     finally { setBusy(''); }
   };
@@ -89,6 +91,7 @@ export function useStatusChanger(): [(doc: DocRecord, current: string, next: str
   const element = (
     <>
       {confirmDialog}
+      {cancelDialog}
       <PaymentSheet bill={payFor} open={!!payFor} onClose={() => setPayFor(null)} onDone={(r) => say(`Payment recorded (${r.number})`)} />
       <Toast msg={toast} />
     </>

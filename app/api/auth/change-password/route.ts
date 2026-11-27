@@ -2,14 +2,14 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { api, ApiError, jsonBody } from '@/lib/server/http';
 import { audit } from '@/lib/server/audit';
-import { checkPassword, hashPassword, passwordProblem, setSessionCookie, signSession } from '@/lib/server/auth';
+import { checkPassword, endSessions, hashPassword, passwordProblem, setSessionCookie, signSession, startSession } from '@/lib/server/auth';
 import { User } from '@/lib/server/models';
 
 const Body = z.object({ current: z.string().min(1).max(200), next: z.string().min(1).max(200) });
 
 export const POST = api({ auth: 'user', allowMustChange: true }, async ({ req, user }) => {
-  // the Team account is shared; changing its password would sign out every executive, so only the branch owner resets it
-  if (user.role === 'team') throw new ApiError(403, 'The Team account password is set by your branch owner');
+  // only the admin changes passwords; everyone else asks the admin
+  if (user.role !== 'admin') throw new ApiError(403, 'To change your password, contact the admin');
   const { current, next } = await jsonBody(req, Body);
   const u = await User.findById(user.id).lean();
   if (!u || !(await checkPassword(current, u.passwordHash as string))) throw new ApiError(422, 'Your current password is wrong', { current: 'Wrong password' });
@@ -20,7 +20,8 @@ export const POST = api({ auth: 'user', allowMustChange: true }, async ({ req, u
   await User.updateOne({ _id: user.id }, { $set: { passwordHash: await hashPassword(next), mustChangePassword: false, sv } });
   await audit(user, { action: 'password_change', entity: 'auth', summary: 'Changed own password' });
   const res = NextResponse.json({ user: { ...user, mustChangePassword: false } });
-  setSessionCookie(res, req, await signSession({ id: user.id, role: user.role, branchId: user.branchId, sv }));
+  await endSessions({ userId: user.id }, user.name); // every device is signed out; this one gets a fresh sign-in
+  setSessionCookie(res, req, await signSession({ id: user.id, role: user.role, branchId: user.branchId, sv, sid: await startSession(user.id, req.headers) }));
   return res;
 });
 

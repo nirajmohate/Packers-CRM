@@ -1,4 +1,5 @@
 'use client';
+import { ensureConfirmed } from '@/lib/api';
 import { useEffect, useRef, useState } from 'react';
 import { Download, ImagePlus } from 'lucide-react';
 import type { CompanyProfile } from '@/lib/types';
@@ -221,7 +222,7 @@ export default function Settings() {
         <section className="card space-y-3 p-4">
           <h2 className="font-semibold text-slate-900">Backup</h2>
           <p className="text-xs text-slate-500">Downloads every branch, setting and document (including the recycle bin) as one file. It never includes passwords.</p>
-          <a className="btn-ghost" href="/api/backup"><Download size={16} />Download backup</a>
+          <button type="button" className="btn-ghost" onClick={async () => { if (await ensureConfirmed()) window.location.href = '/api/backup'; }}><Download size={16} />Download backup</button>
         </section>
       )}
 

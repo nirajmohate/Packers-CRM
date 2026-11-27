@@ -16,6 +16,7 @@ export const Branch = define('Branch', new Schema<any>({
   city: { type: String, default: '' },
   address: { type: String, default: '' },
   phone: { type: String, default: '' },
+  phone2: { type: String, default: '' },
   active: { type: Boolean, default: true },
 }, { ...base, timestamps: true }));
 
@@ -31,6 +32,10 @@ export const User = define('User', new Schema<any>({
   failedLogins: { type: Number, default: 0 },
   lockUntil: { type: Date },
   lastLoginAt: { type: Date },
+  /** two-step login: { enabled, secret (encrypted), pending (encrypted, while setting up), lastStep, backup: hashed one-time codes } */
+  twoFactor: { type: M },
+  /** hashes of devices this account has signed in from (to spot a new device) */
+  knownDevices: { type: [String], default: [] },
 }, { ...base, timestamps: true }));
 
 const DocSchema = new Schema<any>({
@@ -45,6 +50,10 @@ const DocSchema = new Schema<any>({
   deletedBy: String,
   deletedByName: String,
   deleteReason: String,
+  cancelReason: String,
+  leadId: String,
+  cancelledAt: Date,
+  cancelledByName: String,
   createdBy: String,
   createdByName: String,
   updatedByName: String,
@@ -142,3 +151,58 @@ const LeadSchema = new Schema<any>({
 LeadSchema.index({ branchId: 1, leadDate: -1 });
 LeadSchema.index({ branchId: 1, phone: 1 });
 export const Lead = define('Lead', LeadSchema);
+
+/** One signed-in device (like "Login activity" in Instagram). The cookie carries a random id; only its hash is kept here. */
+const SessionSchema = new Schema<any>({
+  userId: { type: String, required: true, index: true },
+  sidHash: { type: String, required: true, unique: true },
+  device: String,
+  browser: String,
+  os: String,
+  ip: String,
+  place: String,
+  lastSeenAt: Date,
+  /** password typed again for a sensitive action (valid a few minutes) */
+  confirmedAt: Date,
+  expiresAt: { type: Date, required: true },
+  revokedAt: Date,
+  revokedByName: String,
+}, { ...base, timestamps: true });
+SessionSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 7 * 24 * 3600 }); // records disappear a week after they end
+export const Session = define('Session', SessionSchema);
+
+/** Security alerts for the admin (new device sign-in on an admin account). Shown on the dashboard until answered. */
+const AlertSchema = new Schema<any>({
+  kind: { type: String, required: true },
+  userId: String,
+  userName: String,
+  loginId: String,
+  sessionId: String,
+  device: String,
+  place: String,
+  ip: String,
+  answer: String, // 'me' | 'not-me'
+  answeredByName: String,
+  answeredAt: Date,
+}, { ...base, timestamps: true });
+AlertSchema.index({ createdAt: -1 });
+export const SecurityAlert = define('SecurityAlert', AlertSchema);
+
+/** Complaints from the website form. branchId null = waiting for the admin to forward it. */
+const ComplaintSchema = new Schema<any>({
+  ref: { type: String, required: true, unique: true },
+  name: String, phone: String, email: String, refNumber: String, location: String, subject: String, message: String,
+  extra: { type: M, default: {} },
+  branchId: { type: String, default: null },
+  suggestedBranchId: { type: String, default: null },
+  matchedBy: { type: String, default: '' },
+  matchedDocId: { type: String, default: '' },
+  matchedDocType: { type: String, default: '' },
+  status: { type: String, default: 'New' },
+  lastActionAt: { type: Date, default: () => new Date() },
+  history: { type: [M], default: [] },
+  dupKey: String,
+}, { ...base, timestamps: true });
+ComplaintSchema.index({ branchId: 1, createdAt: -1 });
+ComplaintSchema.index({ dupKey: 1, createdAt: -1 });
+export const Complaint = define('Complaint', ComplaintSchema);

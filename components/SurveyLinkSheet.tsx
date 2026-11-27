@@ -6,7 +6,7 @@ import { api, ApiFail } from '@/lib/api';
 import { fmtDate } from '@/lib/format';
 import { phoneDigits } from '@/lib/validate';
 import { refresh, useActiveBranch, useActiveBranches, useCompany, useSession } from '@/lib/store';
-import { Hi, Sheet, useConfirm } from './ui';
+import { Sheet, useConfirm } from './ui';
 
 interface LinkRow { id: string; branchId: string; createdByName: string; createdAt: string; expiresAt: string; state: 'open' | 'used' | 'expired' | 'cancelled'; customerName: string; customerPhone: string; docId: string; docNumber: string }
 const STATE: Record<LinkRow['state'], [string, string]> = {
@@ -82,18 +82,18 @@ export default function SurveyLinkSheet({ open, onClose }: { open: boolean; onCl
       {!url ? (
         <div className="space-y-3">
           <p className="rounded-xl bg-violet-50 p-3 text-sm text-violet-900">
-            Send a link to the customer. They fill their details and items on their phone, and the survey appears in your Survey List. <Hi t="Share survey link" className="block text-xs text-violet-700" />
+            Send a link to the customer. They fill their details and items on their phone, and the survey appears in your Survey List.
           </p>
           {!isManager && (
-            <div><label className="label">Branch <Hi t="Branch" className="text-slate-400" /></label>
+            <div><label className="label">Branch</label>
               <select className="input" value={branchId} onChange={(e) => setBranchId(e.target.value)}>
                 <option value="">Choose branch</option>
                 {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select></div>
           )}
           <div className="grid grid-cols-2 gap-3">
-            <div><label className="label">Customer name (optional) <Hi t="Customer name" className="text-slate-400" /></label><input className="input" value={name} maxLength={120} onChange={(e) => setName(e.target.value)} /></div>
-            <div><label className="label">Mobile (optional) <Hi t="Mobile number" className="text-slate-400" /></label><div className="relative"><span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-base font-semibold text-slate-600">+91</span><input className="input pl-12" type="tel" inputMode="tel" value={phone} maxLength={15} onChange={(e) => setPhone(e.target.value)} /></div></div>
+            <div><label className="label">Customer name (optional)</label><input className="input" value={name} maxLength={120} onChange={(e) => setName(e.target.value)} /></div>
+            <div><label className="label">Mobile (optional)</label><div className="relative"><span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-base font-semibold text-slate-600">+91</span><input className="input pl-12" type="tel" inputMode="tel" value={phone} maxLength={15} onChange={(e) => setPhone(e.target.value)} /></div></div>
           </div>
           {error && <p className="text-sm font-medium text-red-600">{error}</p>}
           <button className="btn w-full bg-violet-600 text-white hover:bg-violet-700" disabled={busy} onClick={create}>{busy ? <Loader2 size={18} className="animate-spin" /> : <Link2 size={18} />}Make link</button>

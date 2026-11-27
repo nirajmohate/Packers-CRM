@@ -41,6 +41,7 @@ export function contactOf(co: Company, branch?: Branch) {
   const city = branch?.city || branch?.name || '';
   return {
     phone: branch?.phone || co.phone || SAMPLE_CONTACT.phone,
+    phone2: branch?.phone ? branch.phone2 || '' : '',
     email: co.email || SAMPLE_CONTACT.email,
     address: branch?.address || co.address || SAMPLE_CONTACT.address(city),
     branch: branch?.name || '',
@@ -84,7 +85,7 @@ function letterhead(pdf: Pdf, co: Company, images: PdfImages, branch?: Branch) {
       const ratio = images.logoRatio || co.logoRatio || 1;
       const h = 26;
       const w = Math.min(h * ratio, 46);
-      pdf.addImage(images.logo, 'PNG', M, 9 + (h - w / ratio) / 2, w, w / ratio);
+      pdf.addImage(images.logo, fmtOf(images.logo), M, 9 + (h - w / ratio) / 2, w, w / ratio, 'logo', 'FAST');
       tx = M + w + 4;
       pdf.setDrawColor(...NAVY).setLineWidth(0.5).line(tx, 11, tx, 36);
       tx += 4;
@@ -117,9 +118,10 @@ function letterhead(pdf: Pdf, co: Company, images: PdfImages, branch?: Branch) {
     pdf.setFont('helvetica', 'normal').setTextColor(...INK);
     pdf.text((pdf.splitTextToSize(value, maxW - lw - 4) as string[])[0] ?? '', x + 3.6 + lw, yy);
   };
-  item('Mob:', fmtPhone(c.phone), M + 3, y + 4.8, 52);
-  item('Email:', c.email, M + 57, y + 4.8, 68);
-  item(co.gstin ? 'GSTIN:' : 'Branch:', co.gstin || c.branch || '-', M + 127, y + 4.8, 58);
+  const two = !!c.phone2;
+  item('Mob:', [fmtPhone(c.phone), c.phone2 ? fmtPhone(c.phone2) : ''].filter(Boolean).join(', '), M + 3, y + 4.8, two ? 76 : 52);
+  item('Email:', c.email, M + (two ? 80 : 57), y + 4.8, two ? 56 : 68);
+  item(co.gstin ? 'GSTIN:' : 'Branch:', co.gstin || c.branch || '-', M + (two ? 137 : 127), y + 4.8, two ? 48 : 58);
   item('Address:', [c.address, co.gstin && c.branch ? `(${c.branch} branch)` : ''].filter(Boolean).join(' '), M + 3, y + 9.4, W - 2 * M - 6);
   return y + 13.5;
 }
@@ -141,12 +143,39 @@ function box(pdf: Pdf, x: number, y: number, w: number, h: number, fill: RGB = P
 
 interface Pair { label: string; value: string; full?: boolean }
 
+const fmtOf = (dataUrl: string) => (/^data:image\/jpe?g/i.test(dataUrl) ? 'JPEG' : 'PNG');
+
+/**
+ * Keeps PDFs small (well under 1 MB): uploaded photos of a logo, stamp or signature can be several MB,
+ * so they are redrawn at the size they are printed. The logo becomes a JPEG on white; stamp and
+ * signature stay PNG so their transparent background is kept. Runs in the browser only.
+ */
+async function shrink(src: string | undefined, maxPx: number, jpeg: boolean): Promise<string | undefined> {
+  if (!src || typeof document === 'undefined') return src;
+  try {
+    const img = await new Promise<HTMLImageElement>((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
+    const scale = Math.min(1, maxPx / Math.max(img.naturalWidth, img.naturalHeight));
+    const w = Math.max(1, Math.round(img.naturalWidth * scale));
+    const h = Math.max(1, Math.round(img.naturalHeight * scale));
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const g = c.getContext('2d');
+    if (!g) return src;
+    if (jpeg) { g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h); }
+    g.drawImage(img, 0, 0, w, h);
+    const out = jpeg ? c.toDataURL('image/jpeg', 0.85) : c.toDataURL('image/png');
+    return out.length < src.length ? out : src;
+  } catch { return src; }
+}
+
 /* ============================================== the PDF ============================================== */
 export async function buildPdf(rec: DocRecord, cfg: ModuleConfig, ctx: PdfCtx) {
-  const { company: co, images, branch, docs, opts } = ctx;
+  const { company: co, branch, docs, opts } = ctx;
+  const [logo, stamp, signature] = await Promise.all([shrink(ctx.images.logo, 600, true), shrink(ctx.images.stamp, 360, false), shrink(ctx.images.signature, 360, false)]);
+  const images: PdfImages = { ...ctx.images, logo, stamp, signature };
   const { jsPDF } = await import('jspdf');
   const autoTable = (await import('jspdf-autotable')).default;
-  const pdf = new jsPDF({ unit: 'mm', format: 'a4' });
+  const pdf = new jsPDF({ unit: 'mm', format: 'a4', compress: true });
   const calc = docCalc(rec, cfg, docs, co.state);
   const lastY = () => (pdf as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY;
   let y = letterhead(pdf, co, images, branch);
@@ -445,7 +474,7 @@ export async function buildPdf(rec: DocRecord, cfg: ModuleConfig, ctx: PdfCtx) {
           const QR = (await import('qrcode')).default;
           const img = await QR.toDataURL(qrUri!, { margin: 1, width: 280, errorCorrectionLevel: 'M' });
           const qx = M + LW - 31;
-          pdf.addImage(img, 'PNG', qx, ly + 7.8, 26, 26);
+          pdf.addImage(img, 'PNG', qx, ly + 7.8, 26, 26, 'qr', 'FAST');
           pdf.setFont('helvetica', 'bold').setFontSize(6.8).setTextColor(...NAVY);
           pdf.text(`Scan to pay ${inrPdf(qrAmount)}`, qx + 13, ly + 6.5 + bh - 1.2, { align: 'center' });
         } catch { /* skip QR if it cannot be drawn */ }
@@ -564,8 +593,8 @@ export async function buildPdf(rec: DocRecord, cfg: ModuleConfig, ctx: PdfCtx) {
 function drawSignature(pdf: Pdf, co: Company, images: PdfImages, on: boolean, x: number, y: number) {
   if (!on) return;
   try {
-    if (images.stamp) { const h = 17; const w = Math.min(h * (co.stampRatio || 1), 28); pdf.addImage(images.stamp, 'PNG', x, y, w, h); }
-    if (images.signature) { const h = 11; const w = Math.min(h * (co.signRatio || 2), 34); pdf.addImage(images.signature, 'PNG', x + 24, y + 4, w, h); }
+    if (images.stamp) { const h = 17; const w = Math.min(h * (co.stampRatio || 1), 28); pdf.addImage(images.stamp, fmtOf(images.stamp), x, y, w, h, 'stamp', 'FAST'); }
+    if (images.signature) { const h = 11; const w = Math.min(h * (co.signRatio || 2), 34); pdf.addImage(images.signature, fmtOf(images.signature), x + 24, y + 4, w, h, 'sign', 'FAST'); }
   } catch { /* ignore bad images */ }
 }
 

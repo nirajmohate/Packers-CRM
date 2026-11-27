@@ -29,8 +29,14 @@ input[type='checkbox'] { accent-color: #1f7be8; }
 /* grid items may shrink below their content width, so long names never push buttons off a phone screen */
 .grid > * { min-width: 0; }
 
-/* phones: 16px in text boxes stops iPhone Safari from zooming in when a box is tapped; buttons stay easy to tap */
+/* phones: buttons and boxes stay easy to tap */
 @media (max-width: 767px) {
-  .input { font-size: 16px; min-height: 44px; }
-  .btn { min-height: 44px; }
+  .input { font-size: 14.5px; min-height: 42px; }
+  .btn { min-height: 42px; }
+}
+/* phones: text a little smaller so more fits, still easy to read */
+@media (max-width: 639px) { html { font-size: 14px; } }
+/* iPhone / iPad only: 16px in text boxes stops Safari from zooming in when a box is tapped */
+@supports (-webkit-touch-callout: none) {
+  @media (max-width: 767px) { .input, select.input, textarea.input { font-size: 16px; } }
 }

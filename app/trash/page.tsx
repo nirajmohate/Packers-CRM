@@ -4,7 +4,7 @@ import { RotateCcw, Trash2 } from 'lucide-react';
 import { BY_SLUG } from '@/lib/config';
 import { fmtDate } from '@/lib/format';
 import { ApiFail, emptyTrash, loadTrash, purgeDoc, restoreDoc, useSession, useTrash } from '@/lib/store';
-import { Hi, ModuleIcon, Toast } from '@/components/ui';
+import { ModuleIcon, Toast } from '@/components/ui';
 import { LoadCounter, LoadMore, useInfinite } from '@/components/Infinite';
 
 const DAYS = 30;
@@ -24,7 +24,7 @@ export default function Trash() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <div className="flex-1"><h1 className="text-xl font-bold text-slate-900">Recycle bin <Hi t="Recycle bin" className="text-base text-slate-500" /></h1><p className="text-xs text-slate-500">Deleted documents are kept for {DAYS} days{admin ? '' : '. Only the admin can delete them permanently'}</p></div>
+        <div className="flex-1"><h1 className="text-xl font-bold text-slate-900">Recycle bin</h1><p className="text-xs text-slate-500">Deleted documents are kept for {DAYS} days{admin ? '' : '. Only the admin can delete them permanently'}</p></div>
         {admin && !!trash?.length && <button className="btn-danger" onClick={async () => { if (window.confirm(`Delete all ${trash.length} documents permanently?`)) { try { await emptyTrash(); } catch (e) { fail(e); } } }}>Empty bin</button>}
       </div>
       {trash === null ? <p className="py-8 text-center text-sm text-slate-400">Loading…</p> : trash.length === 0 ? <div className="card p-8 text-center text-sm text-slate-500">The recycle bin is empty.</div> : (
@@ -32,7 +32,7 @@ export default function Trash() {
           <div className="card overflow-x-auto">
             <table className="w-full min-w-[820px] text-left text-sm">
               <thead><tr className="bg-slate-700 text-xs uppercase tracking-wide text-white">
-                <th className="w-10 px-3 py-2.5">#</th><th className="px-3 py-2.5">Document</th><th className="px-3 py-2.5">Customer</th><th className="px-3 py-2.5">Reason for delete <span lang="hi" className="normal-case font-normal text-white/80">· कारण</span></th><th className="px-3 py-2.5">Days left</th><th className="px-3 py-2.5 text-right">Action</th>
+                <th className="w-10 px-3 py-2.5">#</th><th className="px-3 py-2.5">Document</th><th className="px-3 py-2.5">Customer</th><th className="px-3 py-2.5">Reason for delete</th><th className="px-3 py-2.5">Days left</th><th className="px-3 py-2.5 text-right">Action</th>
               </tr></thead>
               <tbody className="divide-y divide-slate-200">
                 {rows.slice(0, shown).map((d, i) => {

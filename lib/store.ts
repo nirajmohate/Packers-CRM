@@ -183,7 +183,7 @@ async function write<T>(fn: () => Promise<T>): Promise<T> {
 }
 const upsert = (docs: DocRecord[], d: DocRecord) => (docs.some((x) => x.id === d.id) ? docs.map((x) => (x.id === d.id ? d : x)) : [d, ...docs]);
 
-export interface DocInput { type: string; branchId?: string; number?: string; status?: string; docDate: string; data: Record<string, string>; items: Record<string, string>[]; rev?: number; leadId?: string }
+export interface DocInput { type: string; branchId?: string; number?: string; status?: string; docDate: string; data: Record<string, string>; items: Record<string, string>[]; rev?: number; leadId?: string; cancelReason?: string }
 
 export const createDoc = (input: DocInput) => write(async () => {
   const r = await api<{ doc: DocRecord }>('/api/docs', { body: input });
@@ -195,8 +195,8 @@ export const updateDoc = (id: string, input: DocInput) => write(async () => {
   set({ docs: upsert(state.docs, r.doc) });
   return r.doc;
 });
-export const setDocStatus = (id: string, status: string) => write(async () => {
-  const r = await api<{ doc: DocRecord }>(`/api/docs/${id}`, { method: 'PATCH', body: { status } });
+export const setDocStatus = (id: string, status: string, reason?: string) => write(async () => {
+  const r = await api<{ doc: DocRecord }>(`/api/docs/${id}`, { method: 'PATCH', body: reason ? { status, reason } : { status } });
   set({ docs: upsert(state.docs, r.doc) });
   return r.doc;
 });

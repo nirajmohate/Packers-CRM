@@ -1,13 +1,14 @@
 import { Types } from 'mongoose';
 import { z } from 'zod';
 import { api, ApiError, jsonBody } from '@/lib/server/http';
+import { requireRecentPassword } from '@/lib/server/recentAuth';
 import { audit } from '@/lib/server/audit';
 import { Branch, Doc, Lead, Settings, User } from '@/lib/server/models';
 import { branchOut } from '@/lib/server/out';
 
 const Patch = z.object({
   name: z.string().trim().min(2).max(60), code: z.string().trim().toUpperCase().regex(/^[A-Z0-9]{2,5}$/, '2 to 5 letters or digits'),
-  city: z.string().trim().max(60), address: z.string().trim().max(300), phone: z.string().trim().max(20), active: z.boolean(),
+  city: z.string().trim().max(60), address: z.string().trim().max(300), phone: z.string().trim().max(20), phone2: z.string().trim().max(20), active: z.boolean(),
 }).partial();
 
 async function find(id: string) {
@@ -30,7 +31,8 @@ export const PATCH = api({ auth: 'admin' }, async ({ req, user, params }) => {
   return { branch: branchOut((await Branch.findById(params.id).lean()) as Record<string, unknown>) };
 });
 
-export const DELETE = api({ auth: 'admin' }, async ({ user, params }) => {
+export const DELETE = api({ auth: 'admin' }, async ({ req, user, params }) => {
+  await requireRecentPassword(req); // password typed again before deleting a branch
   const cur = await find(params.id);
   if ((await Doc.countDocuments({ branchId: params.id })) > 0 || (await User.countDocuments({ branchId: params.id })) > 0 || (await Lead.countDocuments({ branchId: params.id })) > 0)
     throw new ApiError(409, 'This branch has documents, users or customers, so it can only be deactivated.');

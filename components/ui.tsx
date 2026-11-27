@@ -3,7 +3,6 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import * as L from 'lucide-react';
 import type { ModuleConfig } from '@/lib/types';
 import { useActiveBranch, useActiveBranches, useBranches, useSession } from '@/lib/store';
-import { hi } from '@/lib/hi';
 
 const ICONS: Record<string, L.LucideIcon> = {
   FileText: L.FileText, ClipboardList: L.ClipboardList, PackageOpen: L.PackageOpen, Truck: L.Truck,
@@ -25,18 +24,12 @@ const TONES: Record<string, string> = {
   green: 'bg-emerald-100 text-emerald-800 ring-emerald-300', amber: 'bg-amber-100 text-amber-800 ring-amber-300',
   red: 'bg-red-100 text-red-700 ring-red-300', blue: 'bg-sky-100 text-sky-800 ring-sky-300', violet: 'bg-violet-100 text-violet-800 ring-violet-300',
 };
-const STATUS_HI: Record<string, string> = {
-  pending: 'बाकी', approved: 'मंज़ूर', rejected: 'नामंज़ूर', unpaid: 'बकाया', partial: 'आधा', paid: 'भुगतान हुआ', cancelled: 'रद्द',
-  scheduled: 'तय', completed: 'पूरा', 'from customer': 'ग्राहक से', packed: 'पैक', delivered: 'पहुँचा', booked: 'बुक', 'in transit': 'रास्ते में',
-  draft: 'ड्राफ्ट', sent: 'भेजा', received: 'मिला', 'in process': 'प्रक्रिया में', 'link sent': 'लिंक भेजा', 'filled by customer': 'ग्राहक ने भरा',
-};
 export function StatusBadge({ status }: { status: string }) {
   const s = status.toLowerCase();
   // three colours everywhere: red = not paid / rejected / cancelled, green = done, blue = in progress
   const tone = /unpaid|reject|cancel/.test(s) ? 'red'
     : /paid|approved|booked|filled|complet|delivered|received|packed|issued|dispatched|loaded|final|done|closed/.test(s) ? 'green' : 'blue';
-  const h = STATUS_HI[s];
-  return <span className={`inline-block whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ${TONES[tone]}`}>{status}{h && <span lang="hi" className="font-normal opacity-80"> · {h}</span>}</span>;
+  return <span className={`inline-block whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ${TONES[tone]}`}>{status}</span>;
 }
 
 export function Sheet({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
@@ -139,19 +132,12 @@ export function statusTone(status: string): ConfirmTone {
 }
 
 /** Small Hindi word under or next to an English label (nothing if there is no Hindi for it). */
-export function Hi({ t, className = '' }: { t: string; className?: string }) {
-  const h = hi(t);
-  return h ? <span lang="hi" className={`font-normal ${className}`}>{h}</span> : null;
-}
-
-/** Field label: English on the first line, Hindi on the second, each cut with "…" if too long,
- *  so boxes placed side by side always line up on a phone. */
+/** Field label on one line, cut with "…" if too long, so boxes placed side by side always line up on a phone. */
 export function FieldLabel({ text, required, htmlFor }: { text: string; required?: boolean; htmlFor?: string }) {
-  const h = hi(text);
   return (
-    <label className="label" htmlFor={htmlFor} title={h ? `${text} · ${h}` : text}>
+    <label className="label" htmlFor={htmlFor} title={text}>
       <span className="block truncate">{text}{required && <span className="text-red-500"> *</span>}</span>
-      <span lang="hi" className="block truncate text-[11px] font-normal text-slate-400">{h || ' '}</span>
+     
     </label>
   );
 }

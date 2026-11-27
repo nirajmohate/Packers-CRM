@@ -3,16 +3,15 @@ import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowDownUp, BarChart3, ClipboardList, Download, FileText, Loader2, MessageCircle, MoreHorizontal, Pencil, Phone, ReceiptText, Search, SlidersHorizontal, Trash2, UserPlus, X } from 'lucide-react';
-import { billInfo } from '@/lib/ledger';
-import { round2 } from '@/lib/calc';
-import { fmtDate, fmtPhone, inr, todayISO } from '@/lib/format';
+import { fmtDate, fmtPhone, todayISO } from '@/lib/format';
 import { phoneDigits } from '@/lib/validate';
-import { ApiFail, useBranches, useDocs, useHomeState, useLiveDocs, useSession } from '@/lib/store';
+import { ApiFail, useBranches, useSession } from '@/lib/store';
 import { deleteLead, saveLead, useLeads } from '@/lib/leadStore';
-import { ITEM_TYPES, LEAD_SOURCES, LEAD_STATUSES, LEAD_STATUS_HI, LEAD_TONE, LEAD_TYPES, SHIFTING_TYPES, type Lead, type LeadInput } from '@/lib/leads';
+import { ITEM_TYPES, LEAD_SOURCES, LEAD_STATUSES, LEAD_TONE, LEAD_TYPES, SHIFTING_TYPES, type Lead, type LeadInput } from '@/lib/leads';
 import { canUseType } from '@/lib/roles';
+import { BY_SLUG } from '@/lib/config';
 import { exportSheets, type Cell } from '@/lib/export';
-import { Hi, Sheet, Toast, useConfirm } from '@/components/ui';
+import { Sheet, Toast, useConfirm } from '@/components/ui';
 import DateRangeBar, { useDateRange } from '@/components/DateRangeBar';
 import { LoadCounter, LoadMore, useInfinite } from '@/components/Infinite';
 
@@ -33,21 +32,13 @@ export default function CustomersPage() {
 function Customers() {
   const me = useSession();
   const admin = me?.role === 'admin';
-  const [tab, setTab] = useState<'leads' | 'docs'>('leads');
   return (
     <div className="space-y-3">
       <div className="rounded-2xl bg-gradient-to-br from-violet-600 to-fuchsia-500 p-4 text-white shadow-sm">
-        <h1 className="text-xl font-bold">Customers <Hi t="Customers" className="text-base text-white/85" /></h1>
-        <p className="text-xs text-white/85">{admin ? 'Leads of every branch, and customers from your documents' : 'Your branch leads, and customers from your documents'}</p>
+        <h1 className="text-xl font-bold">Customers</h1>
+        <p className="text-xs text-white/85">{admin ? 'Customers and leads of every branch' : 'Customers and leads of your branch'} · add the customer here first, then make the quotation or bill</p>
       </div>
-      <div className="grid grid-cols-2 gap-1 rounded-2xl bg-slate-100 p-1" role="tablist">
-        {([['leads', 'Leads & customers', 'लीड / ग्राहक'], ['docs', 'From documents', 'बिल / कोटेशन से']] as const).map(([k, en, h]) => (
-          <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`rounded-xl px-2 py-2 text-sm font-semibold ${tab === k ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-600'}`}>
-            {en} <span lang="hi" className="block text-[11px] font-normal opacity-80">{h}</span>
-          </button>
-        ))}
-      </div>
-      {tab === 'leads' ? <Leads /> : <FromDocs />}
+      <Leads />
     </div>
   );
 }
@@ -56,6 +47,7 @@ function Customers() {
 function Leads() {
   const me = useSession();
   const admin = me?.role === 'admin';
+  const isTeam = me?.role === 'team';
   const branches = useBranches();
   const { leads, loaded, loading, error } = useLeads();
   const [range, setRange] = useDateRange('pm_leads_range', '3m');
@@ -122,8 +114,15 @@ function Leads() {
   // sidebar "Add customer" opens the form straight away
   const sp = useSearchParams();
   const router = useRouter();
+  // "First add the customer" from a new quotation / bill: after saving, go back to that form with the customer filled in
+  const [then, setThen] = useState('');
   useEffect(() => {
-    if (sp.get('add') === '1') { open(); router.replace('/customers'); }
+    if (sp.get('add') === '1') {
+      const t = sp.get('then') ?? '';
+      setThen(t && BY_SLUG[t] && canUseType(me, t) ? t : '');
+      open();
+      router.replace('/customers');
+    }
   }, [sp]); // eslint-disable-line react-hooks/exhaustive-deps
   const setV = (k: keyof LeadInput, v: string) => setForm((x) => (x ? { ...x, v: { ...x.v, [k]: v } } : x));
 
@@ -146,6 +145,7 @@ function Leads() {
       const saved = await saveLead(form.id, body);
       setForm(null);
       say(form.id ? 'Customer updated' : 'Customer added');
+      if (!form.id && then) { const t = then; setThen(''); router.push(`/docs/${t}/new?lead=${saved.id}`); return; }
       if (!form.id) setRowMenu(saved); // offer "Create quotation" straight away
     } catch (err) {
       if (err instanceof ApiFail && err.fields) setErrs(err.fields);
@@ -194,9 +194,9 @@ function Leads() {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <button className="btn-primary" onClick={() => open()}><UserPlus size={17} />Add customer <span lang="hi" className="text-xs font-normal">· ग्राहक जोड़ें</span></button>
+        <button className="btn-primary" onClick={() => open()}><UserPlus size={17} />Add customer</button>
         <button className="btn-ghost" onClick={() => setPanel(true)}><SlidersHorizontal size={17} />Filters{filterCount > 0 && <span className="rounded-full bg-violet-600 px-1.5 text-[11px] text-white">{filterCount}</span>}</button>
-        <button className="btn-ghost" onClick={() => setExportOpen(true)} disabled={!list.length}><Download size={17} />Export</button>
+        {!isTeam && <button className="btn-ghost" onClick={() => setExportOpen(true)} disabled={!list.length}><Download size={17} />Export</button>}
         {admin && <select aria-label="Branch" className="input w-auto min-w-[150px] flex-1 sm:flex-none" value={f.branch} onChange={(e) => patch({ branch: e.target.value })}><option value="">All branches</option>{branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select>}
       </div>
       <DateRangeBar range={range} onChange={setRange} />
@@ -278,7 +278,7 @@ function Leads() {
                         {admin && <td className="whitespace-nowrap px-3 py-2 text-slate-700">{brName(l.branchId)}</td>}
                         <td className="px-3 py-2">
                           <select aria-label="Status" className={`rounded-full border-0 py-1 pl-2.5 pr-7 text-xs font-semibold ring-1 ${PILL[LEAD_TONE[l.status] ?? 'blue']}`} value={l.status} onChange={(e) => setStatus(l, e.target.value)}>
-                            {LEAD_STATUSES.map((s) => <option key={s} value={s}>{s} · {LEAD_STATUS_HI[s]}</option>)}
+                            {LEAD_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
                           </select>
                         </td>
                         <td className="px-3 py-2"><span className="flex justify-end gap-1.5">
@@ -300,9 +300,9 @@ function Leads() {
         {rowMenu && (
           <div className="grid gap-2">
             <p className="text-xs text-slate-500">Create a document for this customer. Name, mobile, email, cities and dates are filled in for you.</p>
-            {mayMake('quotation') && <Link href={`/docs/quotation/new?lead=${rowMenu.id}`} className="btn bg-red-600 text-white hover:bg-red-700"><FileText size={17} />Create quotation <span lang="hi" className="text-xs font-normal">· कोटेशन बनाएं</span></Link>}
-            {mayMake('survey') && <Link href={`/docs/survey/new?lead=${rowMenu.id}`} className="btn bg-sky-600 text-white hover:bg-sky-700"><ClipboardList size={17} />Create survey <span lang="hi" className="text-xs font-normal">· सर्वे</span></Link>}
-            {mayMake('bill') && <Link href={`/docs/bill/new?lead=${rowMenu.id}`} className="btn bg-emerald-600 text-white hover:bg-emerald-700"><ReceiptText size={17} />Create bill <span lang="hi" className="text-xs font-normal">· बिल बनाएं</span></Link>}
+            {mayMake('quotation') && <Link href={`/docs/quotation/new?lead=${rowMenu.id}`} className="btn bg-red-600 text-white hover:bg-red-700"><FileText size={17} />Create quotation</Link>}
+            {mayMake('survey') && <Link href={`/docs/survey/new?lead=${rowMenu.id}`} className="btn bg-sky-600 text-white hover:bg-sky-700"><ClipboardList size={17} />Create survey</Link>}
+            {mayMake('bill') && <Link href={`/docs/bill/new?lead=${rowMenu.id}`} className="btn bg-emerald-600 text-white hover:bg-emerald-700"><ReceiptText size={17} />Create bill</Link>}
             {rowMenu.docs.length > 0 && (
               <div className="rounded-xl bg-slate-50 p-2 text-xs text-slate-600">Made for this customer: {rowMenu.docs.map((d, i) => <span key={d.id}>{i ? ', ' : ''}<Link className="font-semibold text-violet-700 underline" href={`/docs/${d.type}/view?id=${d.id}`}>{d.number}</Link></span>)}</div>
             )}
@@ -310,7 +310,7 @@ function Leads() {
               <button onClick={() => { const l = rowMenu; setRowMenu(null); open(l); }} className="btn bg-amber-500 text-white hover:bg-amber-600"><Pencil size={17} />Edit</button>
               {rowMenu.phone ? <a href={`https://wa.me/${phoneDigits(rowMenu.phone).length === 10 ? '91' + phoneDigits(rowMenu.phone) : phoneDigits(rowMenu.phone)}`} target="_blank" rel="noreferrer" className="btn bg-emerald-100 text-emerald-800"><MessageCircle size={17} />WhatsApp</a> : <span />}
             </div>
-            <button onClick={() => remove(rowMenu)} className="btn border-2 border-red-200 bg-red-50 text-red-700 hover:bg-red-100"><Trash2 size={17} />Delete <span lang="hi" className="text-xs font-normal">· हटाएं</span></button>
+            {!isTeam && <button onClick={() => remove(rowMenu)} className="btn border-2 border-red-200 bg-red-50 text-red-700 hover:bg-red-100"><Trash2 size={17} />Delete</button>}
           </div>
         )}
       </Sheet>
@@ -383,78 +383,3 @@ function Leads() {
   );
 }
 
-/* ================================================= from documents ================================================= */
-function FromDocs() {
-  const docs = useDocs();
-  const live = useLiveDocs();
-  const home = useHomeState();
-  const [q, setQ] = useState('');
-
-  const list = useMemo(() => {
-    const map = new Map<string, { name: string; phone: string; count: number; billed: number; pending: number; last: string }>();
-    for (const d of docs) {
-      const name = (d.data.customerName || '').trim();
-      if (!name) continue;
-      const phone = (d.data.customerPhone || '').trim();
-      const key = (phone || name).toLowerCase();
-      const c = map.get(key) ?? { name, phone, count: 0, billed: 0, pending: 0, last: '' };
-      c.count += 1;
-      if (d.docDate > c.last) c.last = d.docDate;
-      if (d.type === 'bill' && d.status !== 'Cancelled') { const i = billInfo(d, live, home(d.branchId)); c.billed = round2(c.billed + i.calc.total); c.pending = round2(c.pending + i.calc.balance); }
-      map.set(key, c);
-    }
-    return [...map.values()].filter((c) => !q || (c.name + c.phone).toLowerCase().includes(q.toLowerCase())).sort((a, b) => a.name.localeCompare(b.name));
-  }, [docs, live, home, q]);
-  const [shown, sentinel, more] = useInfinite(list.length, q);
-  const doExport = () => exportSheets([{ name: 'Customers', rows: [['Customer', 'Mobile', 'Documents', 'Last document', 'Billed', 'Pending'], ...list.map((c) => [c.name, fmtPhone(c.phone), c.count, fmtDate(c.last), c.billed, c.pending])] }], `customers-from-documents-${todayISO()}`, 'xlsx');
-
-  return (
-    <div className="space-y-3">
-      <div className="flex gap-2">
-        <div className="relative flex-1">
-          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-          <input className="input pl-10" placeholder="Search name or phone…" value={q} maxLength={100} onChange={(e) => setQ(e.target.value)} />
-        </div>
-        <button className="btn-ghost" onClick={doExport} disabled={!list.length}><Download size={17} /><span className="hidden sm:inline">Excel</span></button>
-      </div>
-      <p className="text-xs text-slate-500">Built automatically from saved quotations, bills and other documents · Total {list.length}</p>
-      {list.length === 0 ? <div className="card p-8 text-center text-sm text-slate-500">No customers yet. They appear once you save a document.</div> : (
-        <>
-          <div className="card overflow-x-auto">
-            <table className="w-full min-w-[640px] text-left text-sm">
-              <thead><tr className="bg-violet-600 text-xs uppercase tracking-wide text-white">
-                <th className="w-10 px-3 py-2.5">#</th><th className="px-3 py-2.5">Customer <Hi t="Customer" className="normal-case text-white/80" /></th>
-                <th className="px-3 py-2.5">Documents</th><th className="px-3 py-2.5 text-right">Billed</th><th className="px-3 py-2.5 text-right">Pending</th><th className="px-3 py-2.5 text-right">Contact</th>
-              </tr></thead>
-              <tbody className="divide-y divide-slate-200">
-                {list.slice(0, shown).map((c, i) => {
-                  const d = phoneDigits(c.phone);
-                  return (
-                    <tr key={c.name + c.phone} className={i % 2 ? 'bg-slate-50/80' : 'bg-white'}>
-                      <td className="px-3 py-2 font-semibold text-slate-500">{i + 1}.</td>
-                      <td className="px-3 py-2"><span className="flex items-center gap-2">
-                        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-violet-100 text-sm font-bold text-violet-700">{c.name[0]?.toUpperCase()}</span>
-                        <span className="min-w-0"><span className="block truncate font-semibold uppercase text-fuchsia-700">{c.name}</span><span className="block text-xs text-slate-500">Phone: {fmtPhone(c.phone) || 'N/A'}</span></span>
-                      </span></td>
-                      <td className="px-3 py-2 text-slate-700">{c.count}</td>
-                      <td className="px-3 py-2 text-right font-semibold text-slate-900">{c.billed ? inr(c.billed) : '—'}</td>
-                      <td className={`px-3 py-2 text-right font-bold ${c.pending > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>{c.pending > 0 ? inr(c.pending) : '—'}</td>
-                      <td className="px-3 py-2"><span className="flex justify-end gap-1.5">
-                        {c.phone ? (<>
-                          <a href={`tel:${c.phone}`} aria-label="Call" className="grid h-8 w-8 place-items-center rounded-full bg-sky-100 text-sky-700"><Phone size={15} /></a>
-                          <a href={`https://wa.me/${d.length === 10 ? '91' + d : d}`} target="_blank" rel="noreferrer" aria-label="WhatsApp" className="grid h-8 w-8 place-items-center rounded-full bg-emerald-100 text-emerald-700"><MessageCircle size={15} /></a>
-                        </>) : <span className="text-xs text-slate-400">No phone</span>}
-                      </span></td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          <LoadMore shown={shown} total={list.length} sentinel={sentinel} more={more} />
-          <LoadCounter shown={shown} total={list.length} />
-        </>
-      )}
-    </div>
-  );
-}

@@ -1,6 +1,6 @@
 {
   "name": "packers-crm",
-  "version": "0.11.1",
+  "version": "0.16.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -8,9 +8,7 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "seed:admin": "tsx scripts/seed-admin.ts",
-    "seed:demo": "tsx scripts/seed-demo.ts",
-    "test:api": "node scripts/api-test.mjs",
+    "wipe-all": "tsx scripts/wipe-all.ts",
     "reset-password": "tsx scripts/reset-password.ts",
     "list-users": "tsx scripts/reset-password.ts"
   },

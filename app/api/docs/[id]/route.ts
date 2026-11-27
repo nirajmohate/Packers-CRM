@@ -6,8 +6,8 @@ import { DocBody } from '@/lib/server/shared';
 export const GET = api({ auth: 'user' }, async ({ user, params }) => ({ doc: await getDoc(user, params.id) }));
 export const PUT = api({ auth: 'user' }, async ({ req, user, params }) => ({ doc: await updateDoc(user, params.id, await jsonBody(req, DocBody)) }));
 export const PATCH = api({ auth: 'user' }, async ({ req, user, params }) => {
-  const { status } = await jsonBody(req, z.object({ status: z.string().max(30) }));
-  return { doc: await setStatus(user, params.id, status) };
+  const { status, reason } = await jsonBody(req, z.object({ status: z.string().max(30), reason: z.string().max(400).optional() }));
+  return { doc: await setStatus(user, params.id, status, reason) };
 });
 export const DELETE = api({ auth: 'user' }, async ({ req, user, params }) => {
   if (req.nextUrl.searchParams.get('purge') === '1') {

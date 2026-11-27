@@ -9,7 +9,7 @@ import { fmtDate, inr, todayISO } from '@/lib/format';
 import { fyOf } from '@/lib/numbering';
 import { docRows, exportSheets, type Sheet as XSheet } from '@/lib/export';
 import { ensureSince, useBranches, useDocs, useHomeState, useLiveDocs } from '@/lib/store';
-import { Hi, StatusBadge, Sheet } from '@/components/ui';
+import { StatusBadge, Sheet } from '@/components/ui';
 import { LoadCounter, LoadMore, useInfinite } from '@/components/Infinite';
 
 const PERIODS = ['This month', 'Last month', 'This financial year', 'Last financial year', 'All time', 'Custom'] as const;
@@ -94,7 +94,7 @@ export default function Reports() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <div className="flex-1"><h1 className="text-xl font-bold text-slate-900">Reports <Hi t="Reports" className="text-base text-slate-500" /></h1><p className="text-xs text-slate-500">{lo === '0000-01-01' ? 'All time' : `${fmtDate(lo)} to ${fmtDate(hi)}`}</p></div>
+        <div className="flex-1"><h1 className="text-xl font-bold text-slate-900">Reports</h1><p className="text-xs text-slate-500">{lo === '0000-01-01' ? 'All time' : `${fmtDate(lo)} to ${fmtDate(hi)}`}</p></div>
         <button className="btn-primary" onClick={() => setMenu(true)}><Download size={17} />Export</button>
       </div>
 

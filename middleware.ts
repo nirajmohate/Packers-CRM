@@ -25,6 +25,7 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(url);
   }
   // pages a role may not use go back to the dashboard (the API refuses the data anyway)
+  if (pathname === '/change-password' && role !== 'admin') return NextResponse.redirect(new URL('/', req.url)); // only the admin changes passwords
   const who = { role };
   const area = areaOfPath(pathname);
   if (area && !canSee(who, area)) return NextResponse.redirect(new URL('/', req.url));

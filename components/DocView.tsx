@@ -60,7 +60,7 @@ export default function DocView({ rec, cfg, docs, home, branch, terms }: { rec: 
 
       {cfg.goods && readGoods(rec.data).length > 0 && (
         <section className="card p-4">
-          <h2 className="mb-2 font-semibold text-slate-900">Items list ({readGoods(rec.data).length}) <span lang="hi" className="text-sm font-normal text-slate-500">· सामान की सूची</span></h2>
+          <h2 className="mb-2 font-semibold text-slate-900">Items list ({readGoods(rec.data).length})</h2>
           <ol className="divide-y divide-slate-100 text-sm">
             {readGoods(rec.data).map((r, i) => (
               <li key={i} className="flex items-start gap-3 py-2">

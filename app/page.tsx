@@ -1,4 +1,6 @@
 'use client';
+import SecurityAlerts from '@/components/SecurityAlerts';
+import ComplaintsCard from '@/components/ComplaintsCard';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { CalendarClock, Check, Phone, Plus, Sun, X } from 'lucide-react';
@@ -10,7 +12,7 @@ import { billInfo, docCalc } from '@/lib/ledger';
 import { num, round2 } from '@/lib/calc';
 import { fmtDate, fmtPhone, inr, inrShort, monthLabel, todayISO } from '@/lib/format';
 import { ApiFail, useSession, ensureSince, setDocStatus, useActiveBranch, useBranches, useDocs, useHomeState, useHydrated, useLiveDocs, useSince } from '@/lib/store';
-import { Hi, ModuleIcon, Sheet, StatusBadge, Toast, useConfirm } from '@/components/ui';
+import { ModuleIcon, Sheet, StatusBadge, Toast, useConfirm } from '@/components/ui';
 import type { DocRecord } from '@/lib/types';
 
 export default function Dashboard() {
@@ -150,34 +152,34 @@ export default function Dashboard() {
   const recent = [...docs].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 6);
 
   const allStats = [
-    { label: 'Quotations', hi: 'कोटेशन', value: String(s.quotes.length), sub: inrShort(s.quoted), bg: 'from-blue-600 to-blue-400', href: '/docs/quotation' },
-    { label: 'Bills', hi: 'बिल', value: String(s.bills.length), sub: inrShort(s.billed), bg: 'from-green-600 to-emerald-400', href: '/docs/bill' },
-    { label: 'Received', hi: 'मिला', value: inrShort(s.received), sub: `${s.receipts.length} receipts`, bg: 'from-teal-600 to-cyan-400', href: '/reports' },
-    { label: 'Pending', hi: 'बाकी', value: inrShort(s.pending), sub: 'on these bills', bg: 'from-amber-500 to-orange-400', href: '/payments' },
-    { label: 'Customers', hi: 'ग्राहक', value: String(s.customers), sub: 'in this period', bg: 'from-violet-600 to-fuchsia-400', href: '/customers' },
+    { label: 'Quotations', value: String(s.quotes.length), sub: inrShort(s.quoted), bg: 'from-blue-600 to-blue-400', href: '/docs/quotation' },
+    { label: 'Bills', value: String(s.bills.length), sub: inrShort(s.billed), bg: 'from-green-600 to-emerald-400', href: '/docs/bill' },
+    { label: 'Received', value: inrShort(s.received), sub: `${s.receipts.length} receipts`, bg: 'from-teal-600 to-cyan-400', href: '/reports' },
+    { label: 'Pending', value: inrShort(s.pending), sub: 'on these bills', bg: 'from-amber-500 to-orange-400', href: '/payments' },
+    { label: 'Customers', value: String(s.customers), sub: 'in this period', bg: 'from-violet-600 to-fuchsia-400', href: '/customers' },
   ];
   const teamStats = [
     allStats[0],
-    { label: 'Surveys', hi: 'सर्वे', value: String(docs.filter((d) => d.type === 'survey' && inRange(d.docDate)).length), sub: 'in this period', bg: 'from-violet-600 to-fuchsia-400', href: '/docs/survey' },
-    { label: 'Packing lists', hi: 'पैकिंग', value: String(docs.filter((d) => d.type === 'packing' && inRange(d.docDate)).length), sub: 'in this period', bg: 'from-orange-500 to-amber-400', href: '/docs/packing' },
-    { label: 'LR / Bilty', hi: 'बिल्टी', value: String(docs.filter((d) => d.type === 'lr' && inRange(d.docDate)).length), sub: 'in this period', bg: 'from-teal-600 to-cyan-400', href: '/docs/lr' },
-    { label: 'Upcoming', hi: 'आने वाली', value: String(upcoming.length), sub: 'next 30 days', bg: 'from-green-600 to-emerald-400', href: '/docs/packing' },
+    { label: 'Surveys', value: String(docs.filter((d) => d.type === 'survey' && inRange(d.docDate)).length), sub: 'in this period', bg: 'from-violet-600 to-fuchsia-400', href: '/docs/survey' },
+    { label: 'Packing lists', value: String(docs.filter((d) => d.type === 'packing' && inRange(d.docDate)).length), sub: 'in this period', bg: 'from-orange-500 to-amber-400', href: '/docs/packing' },
+    { label: 'LR / Bilty', value: String(docs.filter((d) => d.type === 'lr' && inRange(d.docDate)).length), sub: 'in this period', bg: 'from-teal-600 to-cyan-400', href: '/docs/lr' },
+    { label: 'Upcoming', value: String(upcoming.length), sub: 'next 30 days', bg: 'from-green-600 to-emerald-400', href: '/docs/packing' },
   ];
   const stats = money ? allStats : teamStats;
 
   return (
     <div className="space-y-4">
+      {me?.role === 'admin' && <SecurityAlerts />}
       <section className="overflow-hidden rounded-3xl border border-sky-200 bg-gradient-to-br from-sky-100 via-blue-50 to-sky-200 shadow-sm sm:flex sm:items-stretch">
         <div className="flex flex-col justify-center p-4 sm:w-[46%] sm:shrink-0 lg:px-6 lg:py-4">
           <div className="flex items-start gap-3">
             <span className="relative mt-0.5 grid h-11 w-11 shrink-0 place-items-center"><Sun className="text-amber-400" size={40} fill="#fcd34d" strokeWidth={1.5} /></span>
             <div className="min-w-0">
               <p className="break-words text-2xl font-extrabold leading-tight text-slate-900 lg:text-3xl">Hello, {branchName}!</p>
-              <p lang="hi" className="text-sm text-slate-500">नमस्ते, {branchName}!</p>
             </div>
           </div>
           <p className="mt-2 text-sm text-slate-600">Manage your shifting, create documents and track payments easily.</p>
-          <div><button onClick={() => setCreate(true)} className="btn-primary mt-4"><Plus size={18} />Create new <span lang="hi" className="font-normal">· नया बनाएं</span></button></div>
+          <div><button onClick={() => setCreate(true)} className="btn-primary mt-4"><Plus size={18} />Create new</button></div>
         </div>
         <div className="flex items-end sm:flex-1">
           <HeroArt className="block h-auto max-h-[200px] w-full" />
@@ -193,7 +195,7 @@ export default function Dashboard() {
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           {stats.map((x, i) => (
             <Link key={x.label} href={x.href} className={`rounded-2xl bg-gradient-to-br p-3.5 text-white shadow-sm active:opacity-90 ${x.bg} ${i === 4 ? 'col-span-2 sm:col-span-1' : ''}`}>
-              <p className="text-xs font-semibold text-white/90">{x.label} <span lang="hi" className="font-normal">· {x.hi}</span></p>
+              <p className="text-xs font-semibold text-white/90">{x.label}</p>
               <p className="mt-1 text-2xl font-bold">{x.value}</p>
               <p className="text-[11px] text-white/85">{x.sub}</p>
             </Link>
@@ -210,13 +212,13 @@ export default function Dashboard() {
       )}
 
       <section>
-        <h2 className="mb-2 font-semibold text-slate-900">Quick actions <Hi t="Quick actions" className="text-sm text-slate-500" /></h2>
+        <h2 className="mb-2 font-semibold text-slate-900">Quick actions</h2>
         <div className="grid grid-cols-3 gap-2 sm:grid-cols-5 lg:grid-cols-9">
           {MODULES.map((m) => (
             <Link key={m.slug} href={`/docs/${m.slug}/new`} className="card flex flex-col items-center gap-1 border-b-4 p-2 text-center active:bg-slate-50" style={{ borderBottomColor: m.color }}>
               <ModuleIcon cfg={m} size={34} />
               <span className="text-xs font-semibold leading-tight text-slate-800">{m.title}</span>
-              <Hi t={m.title} className="text-[11px] leading-tight text-slate-500" />
+             
             </Link>
           ))}
         </div>
@@ -233,9 +235,9 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="mb-3 grid grid-cols-3 gap-2 text-center text-xs">
-            <div className="rounded-lg bg-red-50 p-1.5"><p className="text-red-700">Quotation · कोटेशन</p><p className="text-sm font-bold text-red-800">{inrShort(s.quoted)}</p></div>
-            <div className="rounded-lg bg-blue-50 p-1.5"><p className="text-blue-700">Bill · बिल</p><p className="text-sm font-bold text-blue-800">{inrShort(s.billed)}</p></div>
-            <div className="rounded-lg bg-green-50 p-1.5"><p className="text-green-700">Paid · मिला</p><p className="text-sm font-bold text-green-800">{inrShort(s.received)}</p></div>
+            <div className="rounded-lg bg-red-50 p-1.5"><p className="text-red-700">Quotation</p><p className="text-sm font-bold text-red-800">{inrShort(s.quoted)}</p></div>
+            <div className="rounded-lg bg-blue-50 p-1.5"><p className="text-blue-700">Bill</p><p className="text-sm font-bold text-blue-800">{inrShort(s.billed)}</p></div>
+            <div className="rounded-lg bg-green-50 p-1.5"><p className="text-green-700">Paid</p><p className="text-sm font-bold text-green-800">{inrShort(s.received)}</p></div>
           </div>
           <div className="overflow-x-auto pb-1">
             <div className="flex h-44 items-end gap-1.5" style={{ minWidth: `${Math.max(chart.buckets.length * 30, 100)}px` }}>
@@ -258,7 +260,7 @@ export default function Dashboard() {
         </section>
 
         <section className="card min-w-0 p-4">
-          <h2 className="flex items-center gap-2 font-semibold text-slate-900"><CalendarClock size={18} className="text-orange-500" />Upcoming packing <span lang="hi" className="text-sm font-normal text-slate-500">· आने वाली पैकिंग</span></h2>
+          <h2 className="flex items-center gap-2 font-semibold text-slate-900"><CalendarClock size={18} className="text-orange-500" />Upcoming packing</h2>
           <p className="mb-2 text-xs text-slate-500">Next 30 days, from the packing date (or moving date) on quotations, packing lists and surveys.</p>
           {upcoming.length === 0 ? (
             <p className="rounded-xl border border-dashed border-slate-300 p-4 text-center text-sm text-slate-500">Nothing planned. Put a packing date on a quotation or packing list and it shows here.</p>
@@ -290,9 +292,9 @@ export default function Dashboard() {
         </section>
       </div>
 
-      {pendingQ.length > 0 && (
+      {(pendingQ.length > 0 || canSee(me, 'complaints')) && (
         <div className="grid gap-4 lg:grid-cols-2">
-          <section className="card p-4">
+          {pendingQ.length > 0 && <section className="card p-4">
             <h2 className="font-semibold text-slate-900">Quotations waiting for approval</h2>
             <p className="mb-2 text-xs text-slate-500">Tap ✓ to approve or ✕ to reject. You will be asked to confirm first.</p>
             <ul className="divide-y divide-slate-100">
@@ -307,13 +309,14 @@ export default function Dashboard() {
                 </li>
               ))}
             </ul>
-          </section>
+          </section>}
+          {canSee(me, 'complaints') && <ComplaintsCard />}
         </div>
       )}
 
       {recent.length > 0 && (
         <section className="card p-4">
-          <h2 className="mb-2 font-semibold text-slate-900">Recent documents <Hi t="Recent documents" className="text-sm text-slate-500" /></h2>
+          <h2 className="mb-2 font-semibold text-slate-900">Recent documents</h2>
           <ul className="divide-y divide-slate-100">
             {recent.map((d) => {
               const cfg = BY_SLUG[d.type];

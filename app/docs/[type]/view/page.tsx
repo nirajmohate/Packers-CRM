@@ -3,19 +3,20 @@ import ShareButtons from '@/components/ShareButtons';
 import Link from 'next/link';
 import { Suspense, useEffect, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, Ban, Copy, Download, MessageCircle, Pencil, RotateCcw, Trash2, Wallet } from 'lucide-react';
+import { ArrowLeft, Ban, Copy, Download, Eye, ExternalLink, MessageCircle, Pencil, RotateCcw, Trash2, Wallet, X } from 'lucide-react';
 import { BY_SLUG, CONVERT } from '@/lib/config';
 import { docCalc } from '@/lib/ledger';
 import { fmtDate, inr, inrPdf, todayISO } from '@/lib/format';
 import { phoneDigits } from '@/lib/validate';
 import { ApiFail, createDoc, setDocStatus, useAllDocs, useBranches, useCompanyFor, useHydrated, useSession, useTermsFor } from '@/lib/store';
 import { loadCompanyImages } from '@/lib/images';
-import { downloadPdf, sharePdf, type PdfOpts } from '@/lib/pdf';
+import { buildPdf, downloadPdf, pdfName, sharePdf, type PdfOpts } from '@/lib/pdf';
+import { useCancelReason } from '@/components/CancelDialog';
 import DocView from '@/components/DocView';
 import DocHistory from '@/components/DocHistory';
 import PaymentSheet from '@/components/PaymentSheet';
 import PayQr from '@/components/PayQr';
-import { Hi, ModuleIcon, Toast, useConfirm } from '@/components/ui';
+import { ModuleIcon, Toast, useConfirm } from '@/components/ui';
 import { useDeleteDoc } from '@/components/DeleteDialog';
 import { canDelete, canUseType } from '@/lib/roles';
 import { StatusSelect, useStatusChanger } from '@/components/StatusControl';
@@ -34,6 +35,8 @@ function Detail() {
   const [pay, setPay] = useState(false);
   const [opts, setOpts] = useState<PdfOpts>({ stamp: true, qr: true, watermark: true });
   const [ask, confirmDialog] = useConfirm();
+  const [askCancel, cancelDialog] = useCancelReason();
+  const [previewUrl, setPreviewUrl] = useState('');
   const [askDelete, deleteDialog] = useDeleteDoc();
   const me = useSession();
   const convertTo = (CONVERT[type] ?? []).filter((t) => canUseType(me, t));
@@ -79,7 +82,7 @@ function Detail() {
     try {
       const data = { ...rec.data };
       delete data.againstId; delete data.againstDoc;
-      const copy = await createDoc({ type, branchId: rec.branchId, docDate: todayISO(), status: cfg.statuses[0], data, items: rec.items });
+      const copy = await createDoc({ type, branchId: rec.branchId, docDate: todayISO(), status: cfg.statuses[0], data, items: rec.items, ...(rec.leadId ? { leadId: rec.leadId } : {}) });
       router.push(`/docs/${type}/view?id=${copy.id}`);
     } catch (e) { fail(e, 'Could not duplicate'); setBusy(false); }
   };
@@ -88,13 +91,28 @@ function Detail() {
     if (await askDelete(rec)) router.replace(`/docs/${type}`);
   };
   const toggleCancel = async () => {
-    const cancelling = rec.status !== 'Cancelled';
-    const ok = await ask(cancelling
-      ? { tone: 'red', title: 'Cancel this bill?', confirmLabel: 'Yes, cancel bill', message: <p>Bill <b className="text-slate-900">{rec.number}</b> will be marked <b className="text-red-600">Cancelled</b> and left out of totals and reports.</p> }
-      : { tone: 'green', title: 'Reinstate this bill?', confirmLabel: 'Yes, reinstate', message: <p>Bill <b className="text-slate-900">{rec.number}</b> will be active again and its status will follow its payments.</p> });
+    if (rec.status !== 'Cancelled') {
+      const reason = await askCancel(rec); // two steps: reason, then "are you sure?"
+      if (!reason) return;
+      try { await setDocStatus(rec.id, 'Cancelled', reason); } catch (e) { fail(e, 'Could not cancel the bill'); }
+      return;
+    }
+    const ok = await ask({ tone: 'green', title: 'Reinstate this bill?', confirmLabel: 'Yes, reinstate', message: <p>Bill <b className="text-slate-900">{rec.number}</b> will be active again and its status will follow its payments.</p> });
     if (!ok) return;
-    try { await setDocStatus(rec.id, cancelling ? 'Cancelled' : 'Unpaid'); } catch (e) { fail(e, 'Could not change the bill'); }
+    try { await setDocStatus(rec.id, 'Unpaid'); } catch (e) { fail(e, 'Could not change the bill'); }
   };
+  /** Shows the PDF inside the app. Phones that cannot show a PDF inside a page (Android) open it in a new tab. */
+  const preview = async () => {
+    setBusy(true);
+    try {
+      const pdf = await buildPdf(rec, cfg, await pdfCtx());
+      const url = URL.createObjectURL(pdf.output('blob'));
+      if (/Android/i.test(navigator.userAgent)) { window.open(url, '_blank'); setTimeout(() => URL.revokeObjectURL(url), 60_000); }
+      else setPreviewUrl(url);
+    } catch (e) { console.error(e); say('Could not create the preview. Please try again.'); }
+    setBusy(false);
+  };
+  const closePreview = () => { if (previewUrl) URL.revokeObjectURL(previewUrl); setPreviewUrl(''); };
   const showOpts = (cfg.qr && !!co.upi) || !!co.stampId || !!co.signatureId || isBill;
 
   return (
@@ -104,25 +122,32 @@ function Detail() {
         <ModuleIcon cfg={cfg} size={40} />
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-lg font-bold" style={{ color: cfg.color }}>{cfg.title}</h1>
-          <p className="truncate text-xs text-slate-500"><Hi t={cfg.title} /> · {rec.number} · {fmtDate(rec.docDate)}</p>
+          <p className="truncate text-xs text-slate-500">{rec.number} · {fmtDate(rec.docDate)}</p>
         </div>
         {/* status: on its own full-width line on a phone, at the right on bigger screens */}
         <div className="flex w-full items-center gap-2 sm:w-auto">
-          <span className="text-xs font-semibold text-slate-500 sm:hidden">Status <span lang="hi" className="font-normal">· स्थिति</span></span>
+          <span className="text-xs font-semibold text-slate-500 sm:hidden">Status</span>
           <StatusSelect wide doc={rec} status={calc.status} disabled={statusBusy === rec.id} onPick={(next) => changeStatus(rec, calc.status, next, calc.balance ?? 0)} />
         </div>
       </div>
+      {rec.status === 'Cancelled' && rec.cancelReason && (
+        <div className="flex items-start gap-2 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+          <Ban size={17} className="mt-0.5 shrink-0" />
+          <p><b>Cancelled</b>{rec.cancelledByName ? ` by ${rec.cancelledByName}` : ''}{rec.cancelledAt ? ` on ${fmtDate(rec.cancelledAt.slice(0, 10))}` : ''}. Reason: <b>{rec.cancelReason}</b></p>
+        </div>
+      )}
       <p className="px-1 text-xs text-slate-400">Created by {rec.createdByName || 'unknown'}{rec.updatedByName && rec.rev && rec.rev > 1 ? ` · last edited by ${rec.updatedByName}` : ''}</p>
 
       {/* actions near the top (not stuck to the bottom, the app menu is there on phones) */}
       <div className="flex gap-2">
-        <button onClick={download} disabled={busy} className="btn-primary flex-1"><Download size={18} />{busy ? 'Preparing…' : 'Download PDF'}</button>
+        <button onClick={preview} disabled={busy} className="btn flex-1 border-2 border-brand-600 bg-white text-brand-700 hover:bg-brand-50"><Eye size={18} />Preview</button>
+        <button onClick={download} disabled={busy} className="btn-primary flex-1"><Download size={18} />{busy ? 'Preparing…' : <><span className="sm:hidden">PDF</span><span className="hidden sm:inline">Download PDF</span></>}</button>
         <button onClick={share} disabled={busy} className="btn-ghost w-12 px-0 text-emerald-600 sm:w-auto sm:px-4" aria-label="Share PDF file"><MessageCircle size={20} /><span className="hidden sm:inline">Share file</span></button>
         <Link href={`/docs/${type}/edit?id=${rec.id}`} className="btn-ghost w-12 px-0 sm:w-auto sm:px-4" aria-label="Edit"><Pencil size={18} /><span className="hidden sm:inline">Edit</span></Link>
       </div>
 
       <section className="card space-y-2 p-3">
-        <p className="text-xs font-semibold text-slate-600">Send to customer <span lang="hi" className="font-normal">· ग्राहक को भेजें</span> <span className="font-normal text-slate-500">— a short message with a PDF link, only to the number / email on this {cfg.title.toLowerCase()}</span></p>
+        <p className="text-xs font-semibold text-slate-600">Send to customer <span className="font-normal text-slate-500">— a short message with a PDF link, only to the number / email on this {cfg.title.toLowerCase()}</span></p>
         <ShareButtons rec={rec} onDone={say} onError={say} />
       </section>
 
@@ -173,6 +198,18 @@ function Detail() {
       <PaymentSheet bill={isBill ? rec : null} open={pay} onClose={() => setPay(false)} onDone={(r) => say(`Payment recorded (${r.number})`)} />
       {confirmDialog}
       {deleteDialog}
+      {cancelDialog}
+      {previewUrl && (
+        <div className="fixed inset-0 z-[80] flex flex-col bg-slate-900/80" role="dialog" aria-modal="true" aria-label="PDF preview">
+          <div className="flex items-center gap-2 bg-white px-3 py-2 shadow">
+            <p className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900">Preview · {rec.number}</p>
+            <a href={previewUrl} download={pdfName(rec, cfg)} className="btn-primary min-h-[36px] px-3 text-xs"><Download size={15} />Download</a>
+            <a href={previewUrl} target="_blank" rel="noreferrer" className="btn-ghost min-h-[36px] px-3 text-xs" aria-label="Open in new tab"><ExternalLink size={15} /><span className="hidden sm:inline">New tab</span></a>
+            <button onClick={closePreview} className="grid h-9 w-9 place-items-center rounded-full bg-slate-100 text-slate-700" aria-label="Close preview"><X size={18} /></button>
+          </div>
+          <iframe title={`Preview of ${rec.number}`} src={previewUrl} className="mx-auto h-full w-full max-w-4xl flex-1 bg-white" />
+        </div>
+      )}
       {statusElements}
       <Toast msg={toast} />
     </div>

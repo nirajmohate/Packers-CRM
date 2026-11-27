@@ -50,7 +50,7 @@ export function useDeleteDoc(): [(d: DocRecord) => Promise<boolean>, React.React
         <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Step {step} of 2</p>
         {step === 1 ? (
           <>
-            <h2 id="del-title" className="text-lg font-bold text-slate-900">Why delete {doc.number}? <span lang="hi" className="block text-sm font-normal text-slate-500">क्यों हटा रहे हैं?</span></h2>
+            <h2 id="del-title" className="text-lg font-bold text-slate-900">Why delete {doc.number}?</h2>
             <p className="mt-1 text-sm text-slate-600">{cfg?.title}{name ? ` · ${name}` : ''}. The reason is kept in the recycle bin.</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {QUICK.map((q) => (
@@ -68,7 +68,6 @@ export function useDeleteDoc(): [(d: DocRecord) => Promise<boolean>, React.React
           <div className="text-center">
             <span className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-red-50 text-red-600"><TriangleAlert size={30} /></span>
             <h2 id="del-title" className="mt-3 text-lg font-bold text-slate-900">Are you sure you want to delete?</h2>
-            <p lang="hi" className="text-sm text-slate-500">क्या आप सच में हटाना चाहते हैं?</p>
             <p className="mt-2 text-sm text-slate-600"><b className="text-slate-900">{doc.number}</b>{name ? ` (${name})` : ''} will go to the recycle bin. It can be restored within 30 days.</p>
             <p className="mt-2 rounded-xl bg-slate-50 p-2 text-sm text-slate-700">Reason: <b>{reason.trim()}</b></p>
             {linked > 0 && <p className="mt-2 text-sm text-amber-700">This bill has {linked} receipt(s). They stay, but will no longer be linked to a live bill.</p>}

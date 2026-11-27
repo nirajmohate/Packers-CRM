@@ -41,7 +41,7 @@ export default function PayQr({ rec, cfg, money, status, co }: { rec: DocRecord;
         {img ? <img src={img} alt={`UPI QR to pay ${inr(amount)}`} width={160} height={160} className="h-40 w-40" /> : <QrCode className="text-slate-300" size={60} />}
       </div>
       <div className="min-w-0 flex-1 text-center sm:text-left">
-        <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Scan to pay · <span lang="hi">स्कैन करके भुगतान करें</span></p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Scan to pay ·</p>
         <p className="text-2xl font-extrabold text-slate-900">{inr(amount)}</p>
         <p className="text-xs text-slate-500">Balance due after discount, advance and payments received · to <span className="font-mono">{co.upi}</span></p>
         {amount > UPI_SOFT_LIMIT && <p className="mt-1 text-xs text-amber-700">Many banks allow up to ₹1 lakh per UPI payment; the customer may need to pay in parts.</p>}

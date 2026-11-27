@@ -14,7 +14,7 @@ const DOC_KEYS = ['customerName', 'customerPhone', 'customerEmail', 'customerGst
  * "Fill from a saved customer": searches the leads the user may see and the customers of past documents,
  * and hands back the details to copy into the form. Nothing is sent anywhere: it only reads what is already loaded.
  */
-export default function CustomerPicker({ leads, docs, onPick }: { leads: Lead[]; docs: DocRecord[]; onPick: (p: Picked) => void }) {
+export default function CustomerPicker({ leads, docs, onPick, leadsOnly = false, autoFocus = false, bare = false }: { leads: Lead[]; docs: DocRecord[]; onPick: (p: Picked) => void; leadsOnly?: boolean; autoFocus?: boolean; bare?: boolean }) {
   const [q, setQ] = useState('');
   const [openList, setOpenList] = useState(false);
 
@@ -42,7 +42,7 @@ export default function CustomerPicker({ leads, docs, onPick }: { leads: Lead[];
       a.push({ kind: 'Lead', label: l.name || fmtPhone(l.phone), sub: [fmtPhone(l.phone), [l.fromCity, l.toCity].filter(Boolean).join(' → '), l.status].filter(Boolean).join(' · '), data: leadToDocData(l), leadId: l.id, branchId: l.branchId });
       if (a.length >= 8) break;
     }
-    for (const d of fromDocs) {
+    for (const d of leadsOnly ? [] : fromDocs) {
       if (a.length >= 8) break;
       if (!ok(d.data.customerName, d.data.customerPhone || '')) continue;
       const k = phoneDigits(d.data.customerPhone || '') || d.data.customerName.toLowerCase();
@@ -52,20 +52,20 @@ export default function CustomerPicker({ leads, docs, onPick }: { leads: Lead[];
       a.push({ kind: 'Past document', label: d.data.customerName, sub: [fmtPhone(d.data.customerPhone), d.number].filter(Boolean).join(' · '), data });
     }
     return a;
-  }, [q, leads, fromDocs]);
+  }, [q, leads, fromDocs, leadsOnly]);
 
   return (
-    <div className="relative mb-3 rounded-2xl border border-violet-200 bg-violet-50/60 p-3">
-      <label htmlFor="pick-customer" className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-violet-800"><UserCheck size={15} />Fill from a saved customer <span lang="hi" className="font-normal">· पुराना ग्राहक चुनें</span></label>
+    <div className={bare ? 'relative' : 'relative mb-3 rounded-2xl border border-violet-200 bg-violet-50/60 p-3'}>
+      <label htmlFor="pick-customer" className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-violet-800"><UserCheck size={15} />{leadsOnly ? 'Search your customers' : 'Fill from a saved customer'}</label>
       <div className="relative">
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-        <input id="pick-customer" className="input pl-9" placeholder="Type name or mobile…" value={q} maxLength={60} autoComplete="off"
+        <input id="pick-customer" className="input pl-9" placeholder="Type name or mobile…" value={q} maxLength={60} autoComplete="off" autoFocus={autoFocus}
           onChange={(e) => { setQ(e.target.value); setOpenList(true); }} onFocus={() => setOpenList(true)} />
         {q && <button type="button" aria-label="Clear" onClick={() => { setQ(''); setOpenList(false); }} className="absolute right-2 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full text-slate-500"><X size={15} /></button>}
       </div>
       {openList && q.trim().length >= 2 && (
         <ul className="absolute left-3 right-3 z-20 mt-1 max-h-72 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg">
-          {hits.length === 0 ? <li className="px-3 py-3 text-sm text-slate-500">No saved customer found. Just fill the form below.</li> : hits.map((h, i) => (
+          {hits.length === 0 ? <li className="px-3 py-3 text-sm text-slate-500">{leadsOnly ? 'Not in your customers yet. Tap "Add new customer".' : 'No saved customer found. Just fill the form below.'}</li> : hits.map((h, i) => (
             <li key={(h.leadId ?? 'd') + i}>
               <button type="button" className="flex w-full items-start gap-2 px-3 py-2.5 text-left hover:bg-violet-50" onClick={() => { onPick(h); setQ(''); setOpenList(false); }}>
                 <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold uppercase text-slate-900">{h.label}</span><span className="block truncate text-xs text-slate-500">{h.sub}</span></span>
@@ -75,7 +75,7 @@ export default function CustomerPicker({ leads, docs, onPick }: { leads: Lead[];
           ))}
         </ul>
       )}
-      <p className="mt-1.5 text-[11px] text-slate-500">Only empty boxes are filled, so nothing you typed is replaced.</p>
+      {!bare && <p className="mt-1.5 text-[11px] text-slate-500">Only empty boxes are filled, so nothing you typed is replaced.</p>}
     </div>
   );
 }

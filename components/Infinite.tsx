@@ -33,8 +33,8 @@ export function LoadCounter({ shown, total }: { shown: number; total: number }) 
   const left = Math.max(total - shown, 0);
   return (
     <div aria-live="polite" className="pointer-events-none fixed bottom-[5.25rem] right-3 z-30 rounded-2xl bg-slate-900/85 px-3 py-1.5 text-right text-[11px] font-semibold leading-tight text-white shadow-lg lg:bottom-8 lg:right-6">
-      <span className="block">{shown} / {total} <span className="font-normal text-white/80">लोड</span></span>
-      <span className={`block ${left ? 'text-amber-300' : 'text-emerald-300'}`}>{left ? `${left} left · बाकी` : 'All loaded'}</span>
+      <span className="block">{shown} / {total} <span className="font-normal text-white/80">loaded</span></span>
+      <span className={`block ${left ? 'text-amber-300' : 'text-emerald-300'}`}>{left ? `${left} left` : 'All loaded'}</span>
     </div>
   );
 }

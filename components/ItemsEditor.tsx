@@ -5,7 +5,7 @@ import type { Column, ModuleConfig, Row } from '@/lib/types';
 import { lineAmount } from '@/lib/calc';
 import { inr } from '@/lib/format';
 import { catalogFor, searchCatalog } from '@/lib/catalog';
-import { FieldLabel, Hi } from './ui';
+import { FieldLabel } from './ui';
 
 /**
  * Item entry like a shopping list: fill the boxes once, press "Add item", the item drops into the list below
@@ -115,7 +115,7 @@ export default function ItemsEditor(p: ItemsEditorProps) {
       {/* ---- entry boxes ---- */}
       <div className={`rounded-2xl border-2 p-3 ${isEditing ? 'border-amber-400 bg-amber-50/60' : 'border-orange-200 bg-orange-50/50'}`}>
         <p className="mb-2 text-sm font-bold text-orange-800">
-          {isEditing ? `Changing item ${p.editing! + 1}` : 'New item'} <Hi t={isEditing ? 'Update item' : 'Add item'} className="text-xs text-orange-700" />
+          {isEditing ? `Changing item ${p.editing! + 1}` : 'New item'}
         </p>
         {p.chips.length > 0 && !isEditing && (
           <div className="no-scrollbar -mx-1 mb-2 flex gap-2 overflow-x-auto px-1 pb-1">
@@ -141,14 +141,14 @@ export default function ItemsEditor(p: ItemsEditorProps) {
           {cfg.money && <span className="mr-auto text-sm font-semibold text-slate-700">Amount: {inr(lineAmount(p.entry))}</span>}
           {isEditing && <button type="button" className="btn-ghost min-h-[40px]" onClick={p.onCancelEdit}><X size={16} />Cancel</button>}
           <button type="button" onClick={add} className="btn min-h-[42px] bg-orange-500 px-5 text-white hover:bg-orange-600">
-            {isEditing ? <Check size={18} /> : <Plus size={18} />}{isEditing ? 'Update item' : 'Add item'} <Hi t={isEditing ? 'Update item' : 'Add item'} className="text-xs text-white/90" />
+            {isEditing ? <Check size={18} /> : <Plus size={18} />}{isEditing ? 'Update item' : 'Add item'}
           </button>
         </div>
       </div>
 
       {/* ---- the list ---- */}
       <div>
-        <p className="mb-2 text-sm font-semibold text-slate-700">Added items ({p.items.length}) <Hi t="Added items" className="text-xs text-slate-400" /></p>
+        <p className="mb-2 text-sm font-semibold text-slate-700">Added items ({p.items.length})</p>
         {p.items.length === 0 ? (
           <p className="rounded-xl border border-dashed border-slate-300 p-4 text-center text-sm text-slate-500">No items yet. Fill the boxes above and press <b>Add item</b>.</p>
         ) : (

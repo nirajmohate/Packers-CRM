@@ -1,12 +1,14 @@
 'use client';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertCircle, ArrowLeft, ChevronDown } from 'lucide-react';
+import { AlertCircle, ArrowLeft, ChevronDown, UserPlus } from 'lucide-react';
 import ItemsEditor from './ItemsEditor';
 import CustomerPicker, { type Picked } from './CustomerPicker';
+import { useCancelReason } from './CancelDialog';
 import { leadsChanged, useLeads } from '@/lib/leadStore';
 import { canSee } from '@/lib/roles';
-import { AutoTextarea, FieldLabel, Hi } from './ui';
+import { NEEDS_CUSTOMER } from '@/lib/leads';
+import { AutoTextarea, FieldLabel } from './ui';
 import type { DocRecord, Field, ModuleConfig, Row } from '@/lib/types';
 import { GST_RATES, HOUSEHOLD, SERVICE_PRESETS, suggestionNames } from '@/lib/config';
 import { cftOf } from '@/lib/catalog';
@@ -18,7 +20,7 @@ import { FREIGHT, isIgst, lineAmount, moneyCalc, moneyLines, num, round2, validR
 import { amountInWords, inr, todayISO } from '@/lib/format';
 import { isVisible } from '@/lib/fields';
 import { cleanData, itemErrors, rowTouched, validateDoc } from '@/lib/validateDoc';
-import { normalize, validateValue } from '@/lib/validate';
+import { normalize, phoneDigits, validateValue } from '@/lib/validate';
 import { stateFromGstin } from '@/lib/states';
 
 const blankRow = (cfg: ModuleConfig): Row => {
@@ -54,7 +56,7 @@ function FieldInput({ f, value, error, bills, onChange, onBill }: { f: Field; va
     return (
       <label className="flex min-h-[44px] items-center gap-3 rounded-xl border-[1.5px] border-slate-300 bg-white px-3 text-sm font-medium text-slate-800">
         <input {...common} type="checkbox" className="h-5 w-5" checked={value === '1'} onChange={(e) => onChange(e.target.checked ? '1' : '')} />
-        <span className="min-w-0">{f.label} <Hi t={f.label} className="block text-[11px] text-slate-400" /></span>
+        <span className="min-w-0">{f.label}</span>
       </label>
     );
   if (f.type === 'textarea') return <AutoTextarea {...common} minRows={f.rows ?? 2} className={cls} value={value} placeholder={f.placeholder} maxLength={f.key === 'body' ? 20000 : 2000} onChange={(e) => onChange(e.target.value)} />;
@@ -107,11 +109,16 @@ export default function DocForm({ cfg, initial, prefill, draftKey, leadId, leadB
   // the saved customer (lead) this new document is for: its status moves on when the document is saved
   const [linkedLead, setLinkedLead] = useState(leadId ?? '');
   const fieldKeys = useMemo(() => new Set(cfg.sections.flatMap((s) => s.fields.map((f) => f.key))), [cfg]);
-  const { leads } = useLeads(isNew && canSee(user, 'customers'));
+  const { leads, loaded: leadsLoaded } = useLeads(isNew && canSee(user, 'customers'));
   const linkedName = linkedLead ? leads.find((l) => l.id === linkedLead)?.name ?? '' : '';
+  // quotations and bills are made only for a customer saved in Customers first (the server checks this too)
+  const needsCustomer = isNew && NEEDS_CUSTOMER.has(cfg.slug);
+  const [gateDismissed, setGateDismissed] = useState(false);
   const co = companyFor(branchId || null);
   const defaultTerms = termsFor(cfg.slug, branchId || null, cfg.terms).join('\n');
   const [status, setStatus] = useState(initial?.status ?? cfg.statuses[0]);
+  const [cancelReason, setCancelReason] = useState('');
+  const [askCancel, cancelDialog] = useCancelReason();
   // starting values: the document being edited, or the type's defaults for a new one
   const [legacyNote] = useState(() => !!(initial && cfg.freight && initial.data.calcMode !== FREIGHT && validRows(initial.items).length));
   const [data, setData] = useState<Record<string, string>>(() => {
@@ -369,7 +376,7 @@ export default function DocForm({ cfg, initial, prefill, draftKey, leadId, leadB
       if (dup && !window.confirm(`This looks like a duplicate of ${dup.number} (same customer, date and amount). Save anyway?`)) return;
     }
     const manual = numberTouched ? number.trim() : '';
-    const payload = { type: cfg.slug, branchId, ...(manual && (isNew || manual !== initial?.number) ? { number: manual } : {}), status: cfg.slug === 'bill' ? initial?.status ?? 'Unpaid' : status, docDate: date, data: cleaned, items: rows, ...(initial ? { rev: initial.rev } : {}), ...(isNew && linkedLead ? { leadId: linkedLead } : {}) };
+    const payload = { type: cfg.slug, branchId, ...(manual && (isNew || manual !== initial?.number) ? { number: manual } : {}), status: cfg.slug === 'bill' ? initial?.status ?? 'Unpaid' : status, docDate: date, data: cleaned, items: rows, ...(initial ? { rev: initial.rev } : {}), ...(isNew && linkedLead ? { leadId: linkedLead } : {}), ...(status === 'Cancelled' && initial?.status !== 'Cancelled' && cancelReason ? { cancelReason } : {}) };
     setSaving(true);
     try {
       if (cfg.money) rememberRates(rows);
@@ -386,6 +393,15 @@ export default function DocForm({ cfg, initial, prefill, draftKey, leadId, leadB
       } else setFormError('Could not save. Please try again.');
     }
   };
+
+  // made from another document (survey → quotation, quotation → bill): link the saved customer with the same mobile
+  useEffect(() => {
+    if (!needsCustomer || linkedLead || !leadsLoaded) return;
+    const d = phoneDigits(data.customerPhone || '');
+    if (d.length < 10) return;
+    const hit = leads.find((l) => phoneDigits(l.phone).slice(-10) === d.slice(-10) && (!branchId || l.branchId === branchId));
+    if (hit) setLinkedLead(hit.id);
+  }, [needsCustomer, linkedLead, leadsLoaded, leads, data.customerPhone, branchId]);
 
   /** Copies a saved customer's details into the empty boxes of this form (never over what was typed). */
   const pickCustomer = (p: Picked) => {
@@ -450,7 +466,7 @@ export default function DocForm({ cfg, initial, prefill, draftKey, leadId, leadB
           <span className="h-8 w-1.5 shrink-0 rounded-full" style={{ background: cfg.color }} />
           <span className="min-w-0 flex-1 leading-tight">
             <span className="block font-semibold text-slate-900">{title}</span>
-            <Hi t={title} className="block text-xs text-slate-500" />
+           
           </span>
           {bad && <AlertCircle size={18} className="shrink-0 text-red-500" />}
           {badge && <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 ring-1 ring-emerald-200">{badge}</span>}
@@ -470,7 +486,7 @@ export default function DocForm({ cfg, initial, prefill, draftKey, leadId, leadB
     <div>
       <div className="mb-4 flex items-center gap-3">
         <button onClick={() => router.back()} className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white shadow-sm ring-1 ring-slate-200" aria-label="Back"><ArrowLeft size={18} /></button>
-        <h1 className="min-w-0 text-xl font-bold leading-tight" style={{ color: cfg.color }}>{initial ? 'Edit' : 'New'} {cfg.title} <Hi t={cfg.title} className="block text-sm text-slate-500" /></h1>
+        <h1 className="min-w-0 text-xl font-bold leading-tight" style={{ color: cfg.color }}>{initial ? 'Edit' : 'New'} {cfg.title}</h1>
       </div>
 
       {formError && <div role="alert" className="mb-4 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-700">{formError}</div>}
@@ -488,14 +504,28 @@ export default function DocForm({ cfg, initial, prefill, draftKey, leadId, leadB
           This {cfg.title.toLowerCase()} was made with the old charges list. Its amount has been moved into <b>Freight charge</b> (Payment details) and the old lines are in the remark. Check the totals, then save.
         </div>
       )}
-      {isNew && fieldKeys.has('customerName') && <CustomerPicker leads={leads} docs={allDocs} onPick={pickCustomer} />}
+      {isNew && fieldKeys.has('customerName') && !needsCustomer && <CustomerPicker leads={leads} docs={allDocs} onPick={pickCustomer} />}
+      {needsCustomer && !linkedLead && leadsLoaded && !gateDismissed && (
+        <div className="fixed inset-0 z-[70] grid place-items-center bg-slate-900/50 p-4" role="alertdialog" aria-modal="true" aria-labelledby="gate-title">
+          <div className="w-full max-w-md rounded-3xl bg-white p-5 shadow-xl sm:p-6">
+            <span className="grid h-12 w-12 place-items-center rounded-2xl bg-violet-50 text-violet-700"><UserPlus size={24} /></span>
+            <h2 id="gate-title" className="mt-3 text-lg font-bold text-slate-900">First add the customer</h2>
+            <p className="mt-1 text-sm text-slate-600">A {cfg.title.toLowerCase()} can only be made for a customer saved in <b>Customers</b>. Pick them below, or add a new customer — their details are then filled in here.</p>
+            <div className="mt-4"><CustomerPicker leads={leads} docs={[]} onPick={(p) => { pickCustomer(p); }} leadsOnly autoFocus bare /></div>
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <button type="button" className="btn-ghost" onClick={() => router.back()}>Go back</button>
+              <button type="button" className="btn-primary" onClick={() => { setGateDismissed(true); router.push(`/customers?add=1&then=${cfg.slug}`); }}><UserPlus size={17} />Add new customer</button>
+            </div>
+          </div>
+        </div>
+      )}
       {linkedLead && (
         <div className="mb-3 flex items-center gap-2 rounded-2xl border border-fuchsia-200 bg-fuchsia-50 px-3 py-2 text-xs text-fuchsia-900">
           <span className="flex-1">For saved customer <b className="uppercase">{linkedName || 'from your leads'}</b>. {cfg.slug === 'bill' ? 'It is marked Converted when you save.' : cfg.slug === 'quotation' ? 'It is marked Quotation sent when you save.' : 'This document is added to the customer.'}</span>
-          <button type="button" className="font-semibold underline" onClick={() => setLinkedLead('')}>Unlink</button>
+          <button type="button" className="font-semibold underline" onClick={() => { setLinkedLead(''); setGateDismissed(false); }}>{needsCustomer ? 'Change' : 'Unlink'}</button>
         </div>
       )}
-      <p className="mb-3 px-1 text-xs text-slate-500">Tap a section to open it. Nothing is compulsory: fill what you know. <span lang="hi">· जो पता है वही भरें, कुछ भी ज़रूरी नहीं।</span></p>
+      <p className="mb-3 px-1 text-xs text-slate-500">Tap a section to open it. Nothing is compulsory: fill what you know.</p>
 
       <div className="space-y-3">
         {/* 1. main details: number, date, branch, status and the first section (customer) */}
@@ -522,11 +552,19 @@ export default function DocForm({ cfg, initial, prefill, draftKey, leadId, leadB
             {/* status is changed later, from the list or when editing; a new document starts with the first status */}
             {initial && cfg.slug !== 'bill' && (
               <div className="col-span-2"><FieldLabel text="Status" htmlFor="f-status" />
-                <select id="f-status" className="input" value={status} onChange={(e) => { setStatus(e.target.value); touch(); }}>{cfg.statuses.map((x) => <option key={x}>{x}</option>)}</select></div>
+                <select id="f-status" className="input" value={status} onChange={async (e) => {
+                  const v = e.target.value;
+                  if (v === 'Cancelled' && initial && initial.status !== 'Cancelled') {
+                    const r = await askCancel({ ...initial, data, number });
+                    if (!r) return;
+                    setCancelReason(r);
+                  }
+                  setStatus(v); touch();
+                }}>{cfg.statuses.map((x) => <option key={x}>{x}</option>)}</select></div>
             )}
             {first && firstFields.length > 0 && (
               <>
-                <p className="col-span-2 border-t border-slate-200 pt-3 text-sm font-semibold text-slate-800 lg:col-span-4">{first.title} <Hi t={first.title} className="text-xs text-slate-500" /></p>
+                <p className="col-span-2 border-t border-slate-200 pt-3 text-sm font-semibold text-slate-800 lg:col-span-4">{first.title}</p>
                 {firstFields.map(fieldCell)}
               </>
             )}
@@ -618,7 +656,7 @@ export default function DocForm({ cfg, initial, prefill, draftKey, leadId, leadB
         {/* total is always visible */}
         {liveCalc.lines.length > 0 && (
           <section className="card p-4" data-err={errors._total ? '1' : undefined}>
-            <h2 className="mb-2 font-semibold text-slate-900">Summary <Hi t="Summary" className="text-sm text-slate-500" /></h2>
+            <h2 className="mb-2 font-semibold text-slate-900">Summary</h2>
             {errors._total && <p className="mb-2 rounded-lg bg-red-50 p-2 text-xs font-medium text-red-700">{errors._total}</p>}
             <dl className="space-y-1.5 rounded-xl bg-brand-50 p-3 text-sm">
               {(m ? moneyLines(m) : liveCalc.lines).map((ln, i) => (
@@ -636,9 +674,10 @@ export default function DocForm({ cfg, initial, prefill, draftKey, leadId, leadB
       {/* Save / Cancel at the end of the form (the app's bottom menu stays visible on phones) */}
       {formError && <div role="alert" className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-700">{formError}</div>}
       <div className="mt-4 flex gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm lg:justify-end">
-        <button onClick={() => router.back()} className="btn-ghost flex-1 flex-col gap-0 leading-tight lg:flex-none lg:px-8">Cancel <Hi t="Cancel" className="text-[11px] text-slate-500" /></button>
-        <button onClick={submit} disabled={saving} className="btn-primary flex-[2] lg:flex-none lg:px-10"><span className="flex flex-col leading-tight"><span>{saving ? 'Saving…' : initial ? 'Save changes' : `Save ${cfg.title}`}</span><Hi t="Save" className="text-[11px] text-white/90" /></span></button>
+        <button onClick={() => router.back()} className="btn-ghost flex-1 flex-col gap-0 leading-tight lg:flex-none lg:px-8">Cancel</button>
+        <button onClick={submit} disabled={saving} className="btn-primary flex-[2] lg:flex-none lg:px-10"><span className="flex flex-col leading-tight"><span>{saving ? 'Saving…' : initial ? 'Save changes' : `Save ${cfg.title}`}</span></span></button>
       </div>
+      {cancelDialog}
     </div>
   );
 }

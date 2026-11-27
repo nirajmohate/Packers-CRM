@@ -13,6 +13,6 @@ export const BRAND = {
  */
 export const SAMPLE_CONTACT = {
   phone: '9876543210',
-  email: 'info@cloudpackers.in',
+  email: 'info@cloudpackers.com',
   address: (city: string) => `Office No. 12, Main Road${city ? ', ' + city : ''}`,
 } as const;

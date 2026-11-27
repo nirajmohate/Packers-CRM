@@ -1,15 +1,17 @@
 'use client';
 import Link from 'next/link';
+import ConfirmPasswordHost from './ConfirmPasswordHost';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { ChevronDown, Link2, List, LayoutDashboard, FolderOpen, Plus, Users, UserPlus, Settings, Wallet, BarChart3, Trash2, UserCog, Building2, ScrollText, DatabaseBackup, LogOut, KeyRound, UserCircle2, Loader2 } from 'lucide-react';
+import { ChevronDown, Link2, List, LayoutDashboard, FolderOpen, Plus, Users, UserPlus, Settings, Wallet, BarChart3, Trash2, UserCog, Building2, ScrollText, DatabaseBackup, LogOut, KeyRound, UserCircle2, Loader2, ShieldCheck, MessageSquareWarning } from 'lucide-react';
 import { MODULES as ALL_MODULES } from '@/lib/config';
 import { ROLE_LABEL, canSee, canUseType, type Area, type Role } from '@/lib/roles';
 import { boot, refresh, signOut, useBranches, useLoadError, usePhase, useSession } from '@/lib/store';
-import { BranchSelect, Hi, ModuleIcon, Sheet } from './ui';
+import { BranchSelect, ModuleIcon, Sheet } from './ui';
 import { BRAND } from '@/lib/brand';
 
 const EXTRA: { href: string; label: string; Icon: typeof Wallet; area: Area }[] = [
+  { href: '/complaints', label: 'Complaints', Icon: MessageSquareWarning, area: 'complaints' },
   { href: '/payments', label: 'Payments', Icon: Wallet, area: 'payments' },
   { href: '/reports', label: 'Reports', Icon: BarChart3, area: 'reports' },
   { href: '/trash', label: 'Recycle bin', Icon: Trash2, area: 'trash' },
@@ -84,12 +86,13 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   );
   const side = (href: string, label: string, Icon: typeof Users) => (
     <Link key={href} href={href} className={`flex items-center gap-3 rounded-xl px-3 py-2 ${path === href ? 'bg-white font-semibold text-brand-800' : 'hover:bg-white/10'}`}>
-      <Icon size={18} /><span className="min-w-0 flex-1 leading-tight">{label}<Hi t={label} className={`block text-[11px] ${path === href ? 'text-slate-500' : 'text-white/60'}`} /></span>
+      <Icon size={18} /><span className="min-w-0 flex-1 leading-tight">{label}</span>
     </Link>
   );
 
   return (
     <div className="min-h-screen lg:pl-64">
+      <ConfirmPasswordHost />
       <aside className="fixed inset-y-0 left-0 hidden w-64 flex-col overflow-y-auto bg-gradient-to-b from-brand-800 to-brand-600 p-4 text-white lg:flex">
         <Link href="/" className="mb-3 block rounded-2xl bg-white px-3 pb-2 pt-3 text-center shadow-sm" aria-label={`${BRAND.name} home`}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -102,27 +105,27 @@ export default function Shell({ children }: { children: React.ReactNode }) {
           {see('customers') && (() => {
             const here = segs[0] === 'customers';
             const isOpen = openMod === 'customers';
-            const sub = (href: string, label: string, hi: string, Icon: typeof Users) => (
-              <Link href={href} className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-[13px] text-white/90 hover:bg-white/10"><Icon size={15} /><span className="leading-tight">{label}<span lang="hi" className="block text-[11px] text-white/60">{hi}</span></span></Link>
+            const sub = (href: string, label: string, Icon: typeof Users) => (
+              <Link href={href} className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-[13px] text-white/90 hover:bg-white/10"><Icon size={15} /><span className="leading-tight">{label}</span></Link>
             );
             return (
               <div className={`rounded-xl ${isOpen ? 'bg-white/10' : ''}`}>
                 <button type="button" onClick={() => setOpenMod(isOpen ? null : 'customers')} aria-expanded={isOpen} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left ${here && !isOpen ? 'bg-white font-semibold text-brand-800' : 'hover:bg-white/10'}`}>
-                  <Users size={18} /><span className="min-w-0 flex-1 leading-tight">Customers<Hi t="Customers" className={`block text-[11px] ${here && !isOpen ? 'text-slate-500' : 'text-white/60'}`} /></span>
+                  <Users size={18} /><span className="min-w-0 flex-1 leading-tight">Customers</span>
                   <ChevronDown size={16} className={`shrink-0 transition ${isOpen ? 'rotate-180' : ''}`} />
                 </button>
-                {isOpen && <div className="space-y-0.5 pb-1.5 pl-6 pr-1 pt-0.5">{sub('/customers?add=1', 'Add customer', 'ग्राहक जोड़ें', UserPlus)}{sub('/customers', 'Customer list', 'ग्राहक सूची', List)}</div>}
+                {isOpen && <div className="space-y-0.5 pb-1.5 pl-6 pr-1 pt-0.5">{sub('/customers?add=1', 'Add customer', UserPlus)}{sub('/customers', 'Customer list', List)}</div>}
               </div>
             );
           })()}
           {EXTRA.filter((e) => see(e.area)).map((e) => side(e.href, e.label, e.Icon))}
-          <p className="px-3 pb-1 pt-4 text-xs uppercase tracking-wide text-white/60">Documents · <span lang="hi">डॉक्यूमेंट</span></p>
+          <p className="px-3 pb-1 pt-4 text-xs uppercase tracking-wide text-white/60">Documents ·</p>
           {MODULES.map((m) => {
             const here = segs[0] === 'docs' && segs[1] === m.slug;
             const isOpen = openMod === m.slug;
             const sub = (href: string, label: string, Icon: typeof Users, on: boolean) => (
               <Link href={href} onClick={href.endsWith('share=1') ? shareSurvey : undefined} className={`flex items-center gap-2 rounded-lg px-2.5 py-2 text-[13px] ${on ? 'bg-white font-semibold text-slate-900' : 'text-white/90 hover:bg-white/10'}`}>
-                <Icon size={15} style={{ color: on ? m.color : undefined }} /><span className="min-w-0 leading-tight">{label}<Hi t={label} className={`block text-[11px] ${on ? 'text-slate-500' : 'text-white/60'}`} /></span>
+                <Icon size={15} style={{ color: on ? m.color : undefined }} /><span className="min-w-0 leading-tight">{label}</span>
               </Link>
             );
             return (
@@ -130,7 +133,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
                 <button type="button" onClick={() => setOpenMod(isOpen ? null : m.slug)} aria-expanded={isOpen}
                   className={`flex w-full items-center gap-2.5 rounded-xl px-2 py-1.5 text-left ${here && !isOpen ? 'bg-white/15' : 'hover:bg-white/10'}`}>
                   <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white"><ModuleIcon cfg={m} size={30} /></span>
-                  <span className="min-w-0 flex-1 leading-tight"><span className={`block truncate ${here ? 'font-semibold' : ''}`}>{m.title}</span><Hi t={m.title} className="block truncate text-[11px] text-white/60" /></span>
+                  <span className="min-w-0 flex-1 leading-tight"><span className={`block truncate ${here ? 'font-semibold' : ''}`}>{m.title}</span></span>
                   <ChevronDown size={16} className={`shrink-0 transition ${isOpen ? 'rotate-180' : ''}`} />
                 </button>
                 {isOpen && (
@@ -176,24 +179,29 @@ export default function Shell({ children }: { children: React.ReactNode }) {
         </nav>
       )}
 
-      <Sheet open={sheet === 'docs' || sheet === 'create'} onClose={() => setSheet(null)} title={sheet === 'create' ? 'Create new · नया बनाएं' : 'Documents · डॉक्यूमेंट'}>
+      <Sheet open={sheet === 'docs' || sheet === 'create'} onClose={() => setSheet(null)} title={sheet === 'create' ? 'Create new' : 'Documents'}>
         {sheet === 'create' ? (
           <div className="grid grid-cols-3 gap-3">
             {MODULES.map((m) => (
               <Link key={m.slug} href={`/docs/${m.slug}/new`} className="flex flex-col items-center gap-1.5 rounded-2xl border-2 p-3 text-center active:bg-slate-50" style={{ borderColor: m.color + '55' }}>
-                <ModuleIcon cfg={m} /><span className="text-xs font-semibold leading-tight text-slate-800">{m.title}</span><Hi t={m.title} className="text-[11px] text-slate-500" />
+                <ModuleIcon cfg={m} /><span className="text-xs font-semibold leading-tight text-slate-800">{m.title}</span>
               </Link>
             ))}
           </div>
         ) : (
           <ul className="space-y-2">
             {MODULES.map((m) => (
-              <li key={m.slug} className="flex items-center gap-3 rounded-2xl border-2 p-2" style={{ borderColor: m.color + '40' }}>
-                <ModuleIcon cfg={m} size={40} />
-                <span className="min-w-0 flex-1 leading-tight"><span className="block truncate text-sm font-semibold text-slate-900">{m.title}</span><Hi t={m.title} className="block text-[11px] text-slate-500" /></span>
-                <Link href={`/docs/${m.slug}/new`} className="btn min-h-[38px] px-3 text-xs text-white" style={{ background: m.color }}><Plus size={15} />New</Link>
-                <Link href={`/docs/${m.slug}`} className="btn min-h-[38px] border-2 bg-white px-3 text-xs" style={{ borderColor: m.color, color: m.color }}><List size={15} />List</Link>
-                {m.slug === 'survey' && <Link href="/docs/survey?share=1" onClick={shareSurvey} aria-label="Share survey link" className="btn min-h-[38px] bg-violet-600 px-2.5 text-xs text-white"><Link2 size={15} />Link</Link>}
+              <li key={m.slug} className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border-2 p-2" style={{ borderColor: m.color + '40' }}>
+                <span className="flex min-w-[150px] flex-1 items-center gap-3">
+                  <ModuleIcon cfg={m} size={36} />
+                  <span className="min-w-0 flex-1 text-sm font-semibold leading-tight text-slate-900">{m.title}</span>
+                </span>
+                {/* buttons drop to their own row when the name and buttons don't fit side by side */}
+                <span className="flex flex-1 basis-auto justify-end gap-2">
+                  <Link href={`/docs/${m.slug}/new`} className="btn min-h-[36px] flex-1 px-3 text-xs text-white sm:flex-none" style={{ background: m.color }}><Plus size={15} />New</Link>
+                  <Link href={`/docs/${m.slug}`} className="btn min-h-[36px] flex-1 border-2 bg-white px-3 text-xs sm:flex-none" style={{ borderColor: m.color, color: m.color }}><List size={15} />List</Link>
+                  {m.slug === 'survey' && <Link href="/docs/survey?share=1" onClick={shareSurvey} aria-label="Share survey link" className="btn min-h-[36px] flex-1 bg-violet-600 px-3 text-xs text-white sm:flex-none"><Link2 size={15} />Link</Link>}
+                </span>
               </li>
             ))}
           </ul>
@@ -214,7 +222,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
           <p className="text-sm text-slate-500">{admin ? 'Admin, all branches' : `${roleText}${myBranch ? ', ' + myBranch : ''}`}</p>
         </div>
         <div className="grid gap-3">
-          {user?.role === 'team' ? <p className="rounded-xl bg-amber-50 p-3 text-xs text-amber-800">This is your branch&apos;s shared Team account. Ask your branch owner to change its password.</p> : <Link href="/change-password?voluntary=1" className="btn-ghost"><KeyRound size={17} />Change password</Link>}
+          {user?.role === 'admin' ? <><Link href="/change-password?voluntary=1" className="btn-ghost"><KeyRound size={17} />Change password</Link><Link href="/security" className="btn-ghost"><ShieldCheck size={17} />Security · two-step login</Link></> : <p className="rounded-xl bg-amber-50 p-3 text-xs text-amber-800">To change your password, contact the admin.</p>}
           <button className="btn-danger" onClick={() => signOut()}><LogOut size={17} />Sign out</button>
         </div>
       </Sheet>

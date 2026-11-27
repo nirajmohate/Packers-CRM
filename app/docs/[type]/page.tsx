@@ -11,7 +11,7 @@ import { fmtDate, fmtPhone, inr, todayISO } from '@/lib/format';
 import { fyOf } from '@/lib/numbering';
 import { docRows, exportSheets, partyOf } from '@/lib/export';
 import { ensureSince, useSession, useActiveBranch, useBranches, useDocs, useHomeState, useSince } from '@/lib/store';
-import { Hi, ModuleIcon, Sheet } from '@/components/ui';
+import { ModuleIcon, Sheet } from '@/components/ui';
 import { LoadCounter, LoadMore, useInfinite } from '@/components/Infinite';
 import SurveyLinkSheet from '@/components/SurveyLinkSheet';
 import { ROW_TONE, StatusSelect, toneOf, useStatusChanger } from '@/components/StatusControl';
@@ -189,7 +189,7 @@ function DocList() {
           <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-white"><ModuleIcon cfg={cfg} size={40} /></span>
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-lg font-bold leading-tight sm:text-xl">{cfg.title}</h1>
-            <p className="truncate text-xs text-white/90"><Hi t={cfg.title} /> · Total {all.length}{active !== 'all' ? ' in this branch' : ''}</p>
+            <p className="truncate text-xs text-white/90"> · Total {all.length}{active !== 'all' ? ' in this branch' : ''}</p>
           </div>
         </div>
         <div className="mt-3 flex gap-2 sm:mt-0 sm:shrink-0">
@@ -245,7 +245,7 @@ function DocList() {
         <>
           <div className="card overflow-hidden">
             <div className="flex items-center justify-between px-3 py-2 text-sm font-bold" style={{ color: cfg.color }}>
-              <span>All records <span lang="hi" className="text-xs font-normal text-slate-500">· सभी रिकॉर्ड</span></span>
+              <span>All records</span>
               <span className="text-xs font-semibold text-slate-600">Showing {shown} of {list.length}</span>
             </div>
             <div className="overflow-x-auto">
@@ -253,12 +253,12 @@ function DocList() {
                 <thead>
                   <tr className="text-xs uppercase tracking-wide text-white" style={{ background: cfg.color }}>
                     <th className="w-10 px-3 py-2.5">#</th>
-                    <th className="px-3 py-2.5">Details <Hi t="Details" className="normal-case text-white/80" /></th>
-                    <th className="px-3 py-2.5">{cfg.party === 'payeeName' ? 'Payee' : 'Customer'} <Hi t="Customer" className="normal-case text-white/80" /></th>
-                    {hasCity && <th className="px-3 py-2.5">Location <Hi t="Location" className="normal-case text-white/80" /></th>}
-                    {hasAmount && <th className="px-3 py-2.5 text-right">Amount <Hi t="Amount" className="normal-case text-white/80" /></th>}
-                    <th className="px-3 py-2.5">Status <Hi t="Status" className="normal-case text-white/80" /></th>
-                    <th className="px-3 py-2.5 text-right">Action <Hi t="Actions" className="normal-case text-white/80" /></th>
+                    <th className="px-3 py-2.5">Details</th>
+                    <th className="px-3 py-2.5">{cfg.party === 'payeeName' ? 'Payee' : 'Customer'}</th>
+                    {hasCity && <th className="px-3 py-2.5">Location</th>}
+                    {hasAmount && <th className="px-3 py-2.5 text-right">Amount</th>}
+                    <th className="px-3 py-2.5">Status</th>
+                    <th className="px-3 py-2.5 text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
@@ -371,17 +371,17 @@ function DocList() {
       <Sheet open={!!rowMenu} onClose={() => setRowMenu(null)} title={rowMenu ? `${rowMenu.number} · ${partyOf(rowMenu, cfg) || cfg.title}` : ''}>
         {rowMenu && (
           <div className="grid gap-2">
-            <Link href={`/docs/${type}/view?id=${rowMenu.id}`} className="btn bg-sky-600 text-white hover:bg-sky-700"><Eye size={17} />View <Hi t="View" className="text-xs text-white/90" /></Link>
-            <Link href={`/docs/${type}/edit?id=${rowMenu.id}`} className="btn bg-amber-500 text-white hover:bg-amber-600"><Pencil size={17} />Edit <Hi t="Edit" className="text-xs text-white/90" /></Link>
-            <p className="pt-1 text-xs font-semibold text-slate-500">Share with customer <span lang="hi" className="font-normal">· ग्राहक को भेजें</span> (message + PDF link)</p>
+            <Link href={`/docs/${type}/view?id=${rowMenu.id}`} className="btn bg-sky-600 text-white hover:bg-sky-700"><Eye size={17} />View</Link>
+            <Link href={`/docs/${type}/edit?id=${rowMenu.id}`} className="btn bg-amber-500 text-white hover:bg-amber-600"><Pencil size={17} />Edit</Link>
+            <p className="pt-1 text-xs font-semibold text-slate-500">Share with customer (message + PDF link)</p>
             <ShareButtons rec={rowMenu} onDone={() => setRowMenu(null)} onError={(m) => { setRowMenu(null); setPdfErr(m); }} />
-            {canDelete(me) && <button onClick={async () => { const d = rowMenu; setRowMenu(null); await askDelete(d); }} className="btn border-2 border-red-200 bg-red-50 text-red-700 hover:bg-red-100"><Trash2 size={17} />Delete <span lang="hi" className="text-xs font-normal">· हटाएं</span></button>}
+            {canDelete(me) && <button onClick={async () => { const d = rowMenu; setRowMenu(null); await askDelete(d); }} className="btn border-2 border-red-200 bg-red-50 text-red-700 hover:bg-red-100"><Trash2 size={17} />Delete</button>}
             {convertTo.length > 0 && <p className="pt-2 text-xs font-semibold text-slate-500">Create from this {cfg.title.toLowerCase()} (details are copied)</p>}
             {convertTo.map((t) => {
               const tc = BY_SLUG[t];
               return (
                 <Link key={t} href={`/docs/${t}/new?from=${rowMenu.id}`} className="btn border-2 bg-white" style={{ borderColor: tc.color, color: tc.color }}>
-                  <Plus size={17} />Make {tc.title} <Hi t={tc.title} className="text-xs" />
+                  <Plus size={17} />Make {tc.title}
                 </Link>
               );
             })}

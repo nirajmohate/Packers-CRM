@@ -10,6 +10,7 @@ const BranchBody = z.object({
   city: z.string().trim().max(60).default(''),
   address: z.string().trim().max(300).default(''),
   phone: z.string().trim().max(20).default(''),
+  phone2: z.string().trim().max(20).default(''),
 });
 
 export const GET = api({ auth: 'user' }, async ({ user }) => {

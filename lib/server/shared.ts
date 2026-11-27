@@ -8,6 +8,7 @@ export const DocBody = z.object({
   type: z.string().max(30), branchId: z.string().max(40).optional(), number: z.string().max(80).optional(), status: z.string().max(30).optional(),
   docDate: z.string().max(10), data: z.record(z.string(), z.any()), items: z.array(z.any()).max(300).optional(), rev: z.number().optional(),
   leadId: z.string().max(40).optional(),
+  cancelReason: z.string().max(400).optional(),
 });
 
 /** Default window: this financial year and the previous one. */

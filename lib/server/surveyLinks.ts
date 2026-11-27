@@ -10,6 +10,7 @@ import { ApiError } from './http';
 import { Branch, SurveyLink } from './models';
 import { loadBundle } from './settings';
 import { effectiveCompany } from '../settingsFn';
+import { leadFromSurvey } from './leads';
 
 type Rec = Record<string, any>;
 export const LINK_DAYS = 7;
@@ -64,7 +65,7 @@ export async function cancelLink(user: SessionUser, id: string) {
   await SurveyLink.updateOne({ _id: id }, { $set: { revokedAt: new Date() } });
   // its survey (still waiting for the customer) is marked Cancelled
   if (l.docId) {
-    try { const d = await getDoc(user, l.docId); if (d.status === 'Link sent') await setStatus(user, l.docId, 'Cancelled'); } catch { /* survey deleted meanwhile */ }
+    try { const d = await getDoc(user, l.docId); if (d.status === 'Link sent') await setStatus(user, l.docId, 'Cancelled', 'Survey link cancelled before the customer filled it'); } catch { /* survey deleted meanwhile */ }
   }
   await audit(user, { action: 'delete', entity: 'doc', entityId: id, docType: 'survey', branchId: l.branchId, summary: 'Cancelled a survey link' });
 }
@@ -122,6 +123,7 @@ export async function publicSubmit(token: string, body: Rec) {
       ? await updateDoc(who, existing.id, { number: existing.number, docDate: existing.docDate, status: 'Filled by customer', data: { ...existing.data, ...data }, items: items.length ? items : existing.items })
       : await createDoc(who, { type: 'survey', status: 'Filled by customer', docDate: today, data, items });
     await SurveyLink.updateOne({ _id: l._id }, { $set: { docId: doc.id, docNumber: doc.number } });
+    await leadFromSurvey(who, String(l.branchId), data, { id: doc.id, number: doc.number });
     return { number: doc.number };
   } catch (e) {
     await SurveyLink.updateOne({ _id: l._id }, { $unset: { usedAt: '' } });
