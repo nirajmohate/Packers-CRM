@@ -1,5 +1,15 @@
 # Cloud Packers CRM: Stage 2 (database + login)
 
+## What changed in 0.16.3
+
+- `website/crm-complaint-hook.php` now writes one line per complaint to `crm-complaint-log.php` (same folder): time, HTTP code, CRM reply, connection error. No customer details. It cannot be opened from a browser; read it in Hostinger File Manager.
+
+## What changed in 0.16.2 — website complaints fix
+
+- The CRM now understands the cloudpackers.com complaint form's own field names (`Mobile_Number`, `email_address`, `consi_num`, `Moving_from`, …), so the mobile, email and consignment number are used to find the branch.
+- A complaint with the optional message box left empty is no longer refused.
+- `website/crm-complaint-hook.php` waits up to 15 s (was 5 s) because the first request after a quiet period can take a few seconds while the CRM wakes up. Copy line 17 (your key) from your current hook file into the new one before uploading it.
+
 ## What changed in 0.16.1 — client logos on quotations
 
 - Every **quotation PDF** now has an **"Our valued clients"** box (just before Terms & Conditions) with the logos of Asian Paints, Castrol, InfoVision, SBI, TPNODL, FSNL, Blue Star, JSW Steel, L'Oreal India and Netlabs. Bills and other documents are unchanged.

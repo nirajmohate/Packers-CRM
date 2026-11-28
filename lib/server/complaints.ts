@@ -19,12 +19,12 @@ const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 /** The website form may name its fields in different ways; these are the names we understand. */
 const FIELDS: Record<string, string[]> = {
   name: ['name', 'full_name', 'fullname', 'customer_name', 'your_name', 'cname'],
-  phone: ['phone', 'mobile', 'mobile_no', 'mobileno', 'contact', 'contact_no', 'phone_number', 'phone_no', 'number', 'mob'],
-  email: ['email', 'email_id', 'emailid', 'mail', 'your_email'],
-  refNumber: ['invoice', 'invoice_no', 'invoice_number', 'bill_no', 'bill_number', 'consignment', 'consignment_no', 'consignment_number', 'lr_no', 'lr_number', 'order_no', 'quotation_no', 'booking_id', 'booking_no', 'reference', 'ref_no', 'docket_no'],
-  location: ['location', 'city', 'address', 'area', 'from', 'from_city', 'your_location', 'branch'],
+  phone: ['phone', 'mobile', 'mobile_no', 'mobileno', 'contact', 'contact_no', 'phone_number', 'phone_no', 'number', 'mob', 'mobile_number', 'mobile_num', 'contact_number', 'whatsapp', 'whatsapp_number'],
+  email: ['email', 'email_id', 'emailid', 'mail', 'your_email', 'email_address', 'mail_id', 'e_mail'],
+  refNumber: ['invoice', 'invoice_no', 'invoice_number', 'bill_no', 'bill_number', 'consignment', 'consignment_no', 'consignment_number', 'lr_no', 'lr_number', 'order_no', 'quotation_no', 'booking_id', 'booking_no', 'reference', 'ref_no', 'docket_no', 'consi_num', 'consi_no', 'consignment_num', 'lr', 'invoice_num', 'bill_num'],
+  location: ['location', 'city', 'address', 'area', 'from', 'from_city', 'your_location', 'branch', 'moving_from', 'move_from', 'from_location', 'pickup', 'pickup_city'],
   subject: ['subject', 'complaint_type', 'type', 'category', 'issue'],
-  message: ['message', 'complaint', 'comments', 'comment', 'details', 'description', 'msg', 'your_complaint', 'your_message'],
+  message: ['message', 'complaint', 'comments', 'comment', 'details', 'description', 'msg', 'your_complaint', 'your_message', 'c_message', 'complaint_message', 'remarks', 'additional_message'],
 };
 const SKIP = /^(key|secret|password|pass|token|g-recaptcha-response|recaptcha|captcha|submit|csrf.*|_.*)$/i;
 
@@ -113,7 +113,8 @@ const newRef = () => {
 /** Saves a complaint sent by the website and routes it. Duplicates (same sender and text within 10 minutes) are ignored. */
 export async function receiveComplaint(input: Rec) {
   const f = readFields(input);
-  if (!f.message && !f.subject) throw new ApiError(422, 'The complaint text is empty');
+  // the website's message box is optional: keep the complaint anyway, the other fields are in 'extra'
+  if (!f.message && !f.subject) f.message = '(No message written in the form)';
   if (!f.phone && !f.email && !f.name) throw new ApiError(422, 'No name, mobile or email');
   const dupKey = createHash('sha256').update(`${f.phone}|${f.email}|${f.message.slice(0, 300)}`).digest('hex');
   const dup = (await Complaint.findOne({ dupKey, createdAt: { $gt: new Date(Date.now() - 10 * 60_000) } }).lean()) as Rec | null;

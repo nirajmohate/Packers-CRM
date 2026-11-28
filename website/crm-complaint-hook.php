@@ -11,7 +11,7 @@
  *        require_once __DIR__ . '/crm-complaint-hook.php';
  *        send_complaint_to_crm($_POST);
  *
- * If the CRM is slow or down, the customer still sees the thank-you page (waits at most 5 seconds).
+ * If the CRM is slow or down, the customer still sees the thank-you page (waits at most 15 seconds).
  */
 define('CRM_URL', 'https://packers-crm-x4bn.vercel.app/api/public/complaints');
 define('CRM_COMPLAINT_KEY', 'PASTE-THE-SAME-LONG-KEY-AS-COMPLAINT_KEY-IN-VERCEL');
@@ -32,12 +32,28 @@ function send_complaint_to_crm($fields) {
         CURLOPT_POSTFIELDS => $json,
         CURLOPT_HTTPHEADER => array('Content-Type: application/json', 'X-CRM-Key: ' . CRM_COMPLAINT_KEY),
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_CONNECTTIMEOUT => 3,
-        CURLOPT_TIMEOUT => 5,
+        CURLOPT_CONNECTTIMEOUT => 6,
+        CURLOPT_TIMEOUT => 15, // the first request after a quiet time can take ~10 s while the CRM wakes up
     ));
     $res = curl_exec($ch);
     $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $err = curl_error($ch);
     curl_close($ch);
-    if ($code < 200 || $code >= 300) { error_log('CRM complaint copy failed: HTTP ' . $code . ' ' . substr((string)$res, 0, 200)); return false; }
+    crm_complaint_log($code, (string)$res, $err);
+    if ($code < 200 || $code >= 300) { error_log('CRM complaint copy failed: HTTP ' . $code . ' ' . substr((string)$res, 0, 200) . ' ' . $err); return false; }
     return true;
+}
+
+/*
+ * Every send is written to crm-complaint-log.php (same folder) as one line:
+ *   time | HTTP code | CRM reply | connection error
+ * Open it in Hostinger File Manager to see what happened. It starts with "exit", so nobody can read it from a browser.
+ * No customer details are written in it. It keeps only the last ~200 lines.
+ */
+function crm_complaint_log($code, $reply, $err) {
+    $file = __DIR__ . '/crm-complaint-log.php';
+    $line = date('Y-m-d H:i:s') . ' | HTTP ' . $code . ' | ' . str_replace(array("\r", "\n"), ' ', substr($reply, 0, 150)) . ' | ' . $err . "\n";
+    $old = @file($file) ?: array();
+    $old = array_slice(array_filter($old, function ($l) { return strpos($l, '<?php') !== 0; }), -199);
+    @file_put_contents($file, "<?php exit; ?>\n" . implode('', $old) . $line, LOCK_EX);
 }
