@@ -7,6 +7,14 @@ export const BRAND = {
   slogan: 'Move Better... Live Happier...',
 } as const;
 
+/** The three badges at the top right of every PDF. Change the text here if anything changes. */
+export const PDF_BADGES = {
+  iso: '9001:2015',     // ISO certificate number shown in the round seal
+  support: '24x7',      // support hours
+  branches: '33',       // number of branches
+  branchesText: 'ALL OVER INDIA',
+} as const;
+
 /**
  * Previous clients shown on every QUOTATION PDF ("Our valued clients").
  * Files live in public/clients/. To add one: put a small JPG there and add a line here

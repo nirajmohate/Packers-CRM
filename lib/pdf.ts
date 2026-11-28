@@ -5,7 +5,7 @@ import { isVisible } from './fields';
 import { amountInWords, fmtDate, fmtPhone, inrPdf } from './format';
 import { readGoods } from './goods';
 import { upiAmount, upiUri } from './upi';
-import { BRAND, SAMPLE_CONTACT } from './brand';
+import { BRAND, PDF_BADGES, SAMPLE_CONTACT } from './brand';
 import { loadClientLogos } from './images';
 
 type RGB = [number, number, number];
@@ -50,36 +50,57 @@ export function contactOf(co: Company, branch?: Branch) {
 }
 
 /* ============================================ drawing helpers ============================================ */
-/** Light-blue city, road and a delivery truck at the top right of the first page. */
-function headerArt(pdf: Pdf, co: Company) {
+/** Top right of the first page: ISO seal, 24x7 support and the number of branches (texts in lib/brand.ts → PDF_BADGES). */
+function headerArt(pdf: Pdf) {
   pdf.setFillColor(229, 240, 252);
   pdf.lines([[10, -5, 8, -40, 28, -46], [W - 150, 0], [0, 46]], 122, 46, [1, 1], 'F', true);
-  pdf.setFillColor(206, 226, 248);
-  const blocks: [number, number, number][] = [[136, 14, 6], [143, 22, 7], [151, 11, 5], [157, 28, 8], [166, 17, 6], [173, 25, 7], [181, 13, 6], [188, 21, 8], [197, 16, 6], [203, 26, 7]];
-  for (const [x, h, w] of blocks) pdf.rect(x, 42 - h, w, h, 'F');
-  pdf.setFillColor(214, 228, 244).rect(128, 42, W - 128, 4, 'F');
-  // truck, facing left
-  pdf.setFillColor(255, 255, 255).setDrawColor(160, 188, 222).setLineWidth(0.3);
-  pdf.roundedRect(159, 16.5, 44, 21.5, 1.2, 1.2, 'FD');
-  pdf.setFillColor(...NAVY).rect(159, 35.6, 44, 1.2, 'F');
-  const name = (co.name || BRAND.name).trim();
-  pdf.setFont('helvetica', 'bolditalic').setFontSize(name.length > 16 ? 6.5 : 8.5).setTextColor(...NAVY);
-  pdf.text(name, 181, 28, { align: 'center', maxWidth: 40 });
-  pdf.setFillColor(238, 243, 249).setDrawColor(150, 172, 200);
-  pdf.lines([[0, -11], [3.2, -4.5], [10.8, 0], [0, 15.5]], 145.5, 38, [1, 1], 'FD', true);
-  pdf.setFillColor(88, 128, 176);
-  pdf.lines([[2.3, -3.2], [6.2, 0], [0, 5], [-8.5, 0]], 147.2, 27.8, [1, 1], 'F', true);
-  pdf.setFillColor(250, 205, 90).rect(145.7, 33, 1.2, 1.6, 'F');
-  pdf.setFillColor(70, 80, 95).rect(145, 37.6, 58, 1.6, 'F');
-  for (const x of [151, 187.5, 195.5]) {
-    pdf.setFillColor(40, 45, 55).circle(x, 40.4, 2.7, 'F');
-    pdf.setFillColor(170, 176, 186).circle(x, 40.4, 1.1, 'F');
+
+  // ISO seal
+  const cx = 153;
+  const cy = 23.5;
+  pdf.setFillColor(...NAVY).circle(cx, cy, 12.6, 'F');
+  pdf.setFillColor(255, 255, 255).circle(cx, cy, 11.4, 'F');
+  pdf.setFillColor(...NAVY).circle(cx, cy, 10.2, 'F');
+  pdf.setDrawColor(255, 255, 255).setLineWidth(0.25).circle(cx, cy, 9.2, 'S');
+  for (let k = 0; k < 24; k++) { // small dots around the ring
+    const a = (k / 24) * Math.PI * 2;
+    pdf.setFillColor(...BLUE).circle(cx + Math.cos(a) * 11.95, cy + Math.sin(a) * 11.95, 0.22, 'F');
   }
+  pdf.setFont('helvetica', 'bold').setTextColor(255, 255, 255);
+  pdf.setFontSize(4.6).text('QUALITY', cx, cy - 4.6, { align: 'center' });
+  pdf.setFontSize(14).text('ISO', cx, cy + 1.6, { align: 'center' });
+  pdf.setFontSize(5.6).text(PDF_BADGES.iso, cx, cy + 5.6, { align: 'center' });
+  // ribbon
+  pdf.setFillColor(8, 62, 120);
+  pdf.lines([[3, 0], [0, 4.6], [-3, 0], [1.3, -2.3]], cx - 15.5, 33.6, [1, 1], 'F', true);
+  pdf.lines([[-3, 0], [0, 4.6], [3, 0], [-1.3, -2.3]], cx + 15.5, 33.6, [1, 1], 'F', true);
+  pdf.setFillColor(...BLUE).rect(cx - 13, 32.4, 26, 5.4, 'F');
+  pdf.setFontSize(6.8).setTextColor(255, 255, 255).text('CERTIFIED', cx, 36.3, { align: 'center' });
+
+  // 24x7 support
+  const x = 170;
+  pdf.setFillColor(...BLUE).roundedRect(x, 8.5, 29, 15.5, 2.2, 2.2, 'F');
+  pdf.setFillColor(245, 158, 11).roundedRect(x, 21.6, 29, 2.4, 1.2, 1.2, 'F').rect(x, 21.6, 29, 1.2, 'F');
+  pdf.setFillColor(255, 255, 255).circle(x + 5.6, 15.4, 3.7, 'F');
+  pdf.setDrawColor(...NAVY).setLineWidth(0.45).circle(x + 5.6, 15.4, 3.1, 'S');
+  pdf.setLineWidth(0.55).line(x + 5.6, 15.4, x + 5.6, 13.2).line(x + 5.6, 15.4, x + 7.2, 16.3);
+  pdf.setFont('helvetica', 'bold').setFontSize(14).setTextColor(255, 255, 255).text(PDF_BADGES.support, x + 10.6, 16.9);
+  pdf.setFontSize(5.6).text('SUPPORT', x + 10.8, 20.3);
+
+  // branches
+  pdf.setFillColor(255, 255, 255).setDrawColor(...NAVY).setLineWidth(0.45).roundedRect(x, 26.5, 29, 15.5, 2.2, 2.2, 'FD');
+  pdf.setFillColor(...NAVY).circle(x + 5.4, 32.4, 2.6, 'F');
+  pdf.lines([[2.3, 1.2], [-2.3, 4.6], [-2.3, -4.6]], x + 5.4, 33.2, [1, 1], 'F', true);
+  pdf.setFillColor(255, 255, 255).circle(x + 5.4, 32.4, 1, 'F');
+  pdf.setFont('helvetica', 'bold').setFontSize(13.5).setTextColor(...NAVY).text(PDF_BADGES.branches, x + 9.4, 34.4);
+  const nw = pdf.getTextWidth(PDF_BADGES.branches);
+  pdf.setFontSize(6.4).text('BRANCHES', x + 9.9 + nw, 34.2);
+  pdf.setFontSize(5.3).setTextColor(...BLUE).text(PDF_BADGES.branchesText, x + 9.5, 39, { maxWidth: 19 });
 }
 
 /** First-page letterhead: logo, name, tagline, slogan, art, then the branch contact strip. Returns the next y. */
 function letterhead(pdf: Pdf, co: Company, images: PdfImages, branch?: Branch) {
-  headerArt(pdf, co);
+  headerArt(pdf);
   let tx = M;
   if (images.logo) {
     try {
@@ -93,7 +114,7 @@ function letterhead(pdf: Pdf, co: Company, images: PdfImages, branch?: Branch) {
     } catch { /* ignore a bad logo */ }
   }
   const name = (co.name || 'Company name').trim();
-  const room = 140 - tx;
+  const room = 136 - tx;
   let size = 22;
   pdf.setFont('helvetica', 'bold');
   while (size > 13 && pdf.setFontSize(size).getTextWidth(name) > room) size -= 1;
@@ -503,6 +524,10 @@ export async function buildPdf(rec: DocRecord, cfg: ModuleConfig, ctx: PdfCtx) {
       rrows.forEach((r, i) => {
         if (i === finalIdx) {
           pdf.setFillColor(...NAVY).roundedRect(RX, ry, RW, r.h, 1.8, 1.8, 'F');
+          // orange slash between the label and the amount
+          const sx = RX + Math.min(RW * 0.36, 32);
+          pdf.setFillColor(245, 158, 11).lines([[3, 0], [-4.2, r.h], [-3, 0]], sx + 2.1, ry, [1, 1], 'F', true);
+          pdf.setFillColor(30, 136, 229).lines([[1.2, 0], [-4.2, r.h], [-1.2, 0]], sx + 5.8, ry, [1, 1], 'F', true);
           pdf.setFont('helvetica', 'bold').setFontSize(12).setTextColor(255, 255, 255);
           pdf.text(r.lab[0], RX + 4, ry + 6.8);
           pdf.text(r.val[0], RX + RW - 4, ry + 6.8, { align: 'right' });
@@ -576,30 +601,26 @@ export async function buildPdf(rec: DocRecord, cfg: ModuleConfig, ctx: PdfCtx) {
     textSection('Terms & Conditions', lines, 8.2, 3.8);
   }
 
-  /* ----- signatures (a little tighter when that keeps them on the same page) ----- */
+  /* ----- signatures: kept at the bottom of the last page, just above the footer ----- */
   if (y + 28 > LIMIT + 5) { pdf.addPage(); y = TOP2; }
-  const sy = y + 1;
-  pdf.setDrawColor(...NAVY).setLineWidth(1.1).line(M + 2, sy + 25, M + 6, sy + 17); // pen
-  pdf.setFillColor(...NAVY).circle(M + 1.8, sy + 25.4, 0.7, 'F');
-  pdf.setDrawColor(...NAVY).setLineWidth(0.4).line(M + 9, sy + 21, M + 56, sy + 21);
-  pdf.setFont('helvetica', 'normal').setFontSize(9).setTextColor(...INK).text(clean(cfg.signLabels[0]), M + 9, sy + 26);
-  // boxes in the middle
-  const cx = W / 2;
-  pdf.setDrawColor(...LINE).setLineWidth(0.5).line(cx - 30, sy + 21, cx - 14, sy + 21).line(cx + 14, sy + 21, cx + 30, sy + 21);
-  const carton = (x: number, yy: number, w: number, h: number) => {
-    pdf.setFillColor(206, 150, 96).rect(x, yy, w, h, 'F');
-    pdf.setFillColor(232, 196, 148).rect(x + w / 2 - 0.9, yy, 1.8, h, 'F');
-    pdf.setFillColor(180, 126, 76).rect(x, yy, w, 1, 'F');
-  };
-  carton(cx - 10, sy + 16, 9.5, 8);
-  carton(cx + 0.5, sy + 16, 9.5, 8);
-  carton(cx - 4.8, sy + 9.2, 9.6, 6.8);
+  const sy = Math.max(y + 1, LIMIT - 24);
+  // customer side
+  pdf.setDrawColor(...INK).setLineWidth(0.4).line(M + 1, sy + 19, M + 58, sy + 19);
+  pdf.setFillColor(...NAVY).circle(M + 3.4, sy + 22.4, 1.35, 'F').roundedRect(M + 1.2, sy + 24.1, 4.4, 2.5, 1.1, 1.1, 'F');
+  pdf.setFont('helvetica', 'normal').setFontSize(9).setTextColor(...INK).text(clean(cfg.signLabels[0]), M + 7.5, sy + 26);
+  // houses and towers in the middle
+  skyline(pdf, W / 2, sy + 26.4);
   // company side
   pdf.setFont('helvetica', 'bold').setFontSize(10).setTextColor(...NAVY);
-  if (co.name) pdf.text(`For ${co.name}`, W - M - 2, sy + 2, { align: 'right' });
-  drawSignature(pdf, co, images, opts.stamp, W - M - 60, sy + 4);
-  pdf.setDrawColor(...INK).setLineWidth(0.4).line(W - M - 58, sy + 21, W - M - 2, sy + 21);
-  pdf.setFont('helvetica', 'normal').setFontSize(9).setTextColor(...INK).text(clean(cfg.signLabels[1]), W - M - 30, sy + 26, { align: 'center' });
+  if (co.name) pdf.text(`For ${co.name}`, W - M - 2, sy + 1, { align: 'right' });
+  drawSignature(pdf, co, images, opts.stamp, W - M - 60, sy + 2);
+  pdf.setDrawColor(...INK).setLineWidth(0.4).line(W - M - 58, sy + 19, W - M - 1, sy + 19);
+  const lab = clean(cfg.signLabels[1]);
+  pdf.setFont('helvetica', 'normal').setFontSize(9);
+  const lx = W - M - 30 - (pdf.getTextWidth(lab) + 6) / 2;
+  pdf.setFillColor(...NAVY).lines([[2.1, 0.8], [0, 2.1], [-2.1, 1.9], [-2.1, -1.9], [0, -2.1]], lx + 2.1, sy + 22.2, [1, 1], 'F', true);
+  pdf.setDrawColor(255, 255, 255).setLineWidth(0.35).line(lx + 1.2, sy + 24.6, lx + 1.9, sy + 25.3).line(lx + 1.9, sy + 25.3, lx + 3.1, sy + 23.9);
+  pdf.setTextColor(...INK).text(lab, lx + 5.6, sy + 26);
   y = sy + 29;
 
   /* ----- watermark ----- */
@@ -621,6 +642,26 @@ export async function buildPdf(rec: DocRecord, cfg: ModuleConfig, ctx: PdfCtx) {
   return pdf;
 }
 
+/** Small light-blue houses and towers between the two signatures. (cx = centre, base = ground line) */
+function skyline(pdf: Pdf, cx: number, base: number) {
+  pdf.setFillColor(214, 231, 250);
+  for (const [dx, w, h] of [[-27, 5, 10], [-21, 4, 14], [-6, 4, 16], [14, 5, 13], [20, 4, 9], [25, 5, 15]] as [number, number, number][]) {
+    pdf.rect(cx + dx, base - h, w, h, 'F');
+  }
+  pdf.setFillColor(255, 255, 255);
+  for (const [dx, h] of [[-20, 14], [-5, 16], [26, 15]] as [number, number][]) for (let k = 2.5; k < h - 1; k += 2.6) pdf.rect(cx + dx, base - h + k, 0.9, 1, 'F');
+  const house = (x: number, w: number, h: number, body: RGB, roof: RGB) => {
+    pdf.setFillColor(...body).rect(x, base - h, w, h, 'F');
+    pdf.setFillColor(...roof).lines([[w / 2 + 1.2, -w * 0.42], [w / 2 + 1.2, w * 0.42]], x - 1.2, base - h + 0.2, [1, 1], 'F', true);
+    pdf.setFillColor(255, 255, 255).rect(x + w / 2 - 0.9, base - 2.6, 1.8, 2.6, 'F').rect(x + 1, base - h + 1.4, 1.5, 1.3, 'F').rect(x + w - 2.5, base - h + 1.4, 1.5, 1.3, 'F');
+  };
+  house(cx - 17, 8, 7, [150, 196, 240], [70, 134, 205]);
+  house(cx - 4.5, 10, 9, [120, 178, 236], NAVY);
+  house(cx + 7.5, 8, 6.5, [150, 196, 240], [70, 134, 205]);
+  pdf.setFillColor(40, 150, 90).circle(cx - 19.6, base - 2.2, 1.6, 'F').circle(cx + 17.6, base - 2, 1.5, 'F');
+  pdf.setDrawColor(...LINE).setLineWidth(0.5).line(cx - 32, base, cx + 32, base);
+}
+
 function drawSignature(pdf: Pdf, co: Company, images: PdfImages, on: boolean, x: number, y: number) {
   if (!on) return;
   try {
@@ -639,7 +680,10 @@ function pageFrames(pdf: Pdf, rec: DocRecord, co: Company, title: string) {
     pdf.setFillColor(...NAVY);
     pdf.lines([[70, -5, 130, 6, W, -1], [0, 12.5], [-W, 0]], 0, 285.5, [1, 1], 'F', true);
     pdf.setFont('helvetica', 'normal').setFontSize(8.5).setTextColor(255, 255, 255);
-    pdf.text(`${rec.number}   |   Page ${i} of ${n}`, W / 2, 292.8, { align: 'center' });
+    const ft = `${rec.number}   |   Page ${i} of ${n}`;
+    pdf.text(ft, W / 2, 292.8, { align: 'center' });
+    const half = pdf.getTextWidth(ft) / 2;
+    pdf.setDrawColor(255, 255, 255).setLineWidth(0.3).line(W / 2 - half - 34, 291.9, W / 2 - half - 5, 291.9).line(W / 2 + half + 5, 291.9, W / 2 + half + 34, 291.9);
     if (i > 1) {
       pdf.setFont('helvetica', 'bold').setFontSize(9.5).setTextColor(...NAVY).text(co.name || '', M, 10);
       pdf.setFont('helvetica', 'normal').setFontSize(8.5).setTextColor(...INK).text(`${title}  ${rec.number}`, W - M, 10, { align: 'right' });

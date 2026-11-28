@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "app.vercel.packers_crm_x4bn.twa",
+        "sha256_cert_fingerprints": ["8B:5D:D9:69:86:04:8C:8F:49:EF:A0:09:24:30:7B:D8:5C:C7:9F:F1:1C:0E:F0:72:73:08:C8:64:AE:5A:EE:A4"]
+      }
+    }]

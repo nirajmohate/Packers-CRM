@@ -5,12 +5,14 @@ import { useSearchParams } from 'next/navigation';
 import { AlarmClock, Download, Loader2, Mail, MapPin, MessageCircle, Phone, Search, Send, X } from 'lucide-react';
 import { useBranches, useSession } from '@/lib/store';
 import { loadComplaints, updateComplaint, useComplaints } from '@/lib/complaintStore';
-import { COMPLAINT_STATUSES, COMPLAINT_TONE, OPEN_STATUSES, isOverdue, type Complaint } from '@/lib/complaints';
+import { AREA_HINTS, COMPLAINT_STATUSES, COMPLAINT_TONE, OPEN_STATUSES, isOverdue, type Complaint } from '@/lib/complaints';
 import { fmtDate, fmtPhone, todayISO } from '@/lib/format';
 import { phoneDigits } from '@/lib/validate';
 import { exportSheets } from '@/lib/export';
 import { Sheet, Toast } from '@/components/ui';
 import DateRangeBar, { useDateRange } from '@/components/DateRangeBar';
+import { useLocalState } from '@/lib/useLocalState';
+import { BRANCH_PRESETS } from '@/lib/branchPresets';
 import { LoadCounter, LoadMore, useInfinite } from '@/components/Infinite';
 
 type View = 'open' | 'overdue' | 'unassigned' | 'all' | (typeof COMPLAINT_STATUSES)[number];
@@ -31,18 +33,41 @@ function Complaints() {
   const [range, setRange] = useDateRange('pm_complaints_range', 'all');
   const [q, setQ] = useState('');
   const [branch, setBranch] = useState('');
+  const [city, setCity] = useLocalState('pm_complaints_city', ''); // admin only: '' | 'city:Pune'
   const [openId, setOpenId] = useState<string | null>(sp.get('id'));
   const [msg, setMsg] = useState('');
   const say = (m: string) => { setMsg(m); setTimeout(() => setMsg(''), 2600); };
   const brName = (id: string | null) => (id ? branches.find((b) => b.id === id)?.name ?? '—' : 'Not forwarded');
 
+  /** Cities of the branches, for the City tab of the date filter. */
+  const cityOf = useMemo(() => new Map(branches.map((b) => [b.id, (b.city || b.name || '').trim()])), [branches]);
+  // all 17 Cloud Packers cities, plus any branch added later
+  const cities = useMemo(() => [...new Set([...BRANCH_PRESETS.map((p) => p.city), ...cityOf.values()].map((c) => c.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [cityOf]);
+  /** A complaint is in a city when its branch (or the suggested one) is there, or its location names the city or one of its areas. */
+  const inCity = useMemo(() => {
+    if (!admin || !city) return () => true;
+    const words = (t: string) => ` ${t.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ')} `;
+    if (city.startsWith('text:')) {
+      const t = city.slice(5).toLowerCase();
+      return (c: Complaint) => `${c.location} ${c.message} ${cityOf.get(c.branchId ?? '') ?? ''} ${cityOf.get(c.suggestedBranchId ?? '') ?? ''}`.toLowerCase().includes(t);
+    }
+    const name = city.slice(5);
+    const keys = [name.toLowerCase(), ...(AREA_HINTS[name.toLowerCase()] ?? [])];
+    return (c: Complaint) => {
+      const bc = c.branchId ? cityOf.get(c.branchId) : c.suggestedBranchId ? cityOf.get(c.suggestedBranchId) : '';
+      if (bc) return bc.toLowerCase() === name.toLowerCase();
+      const w = words(c.location);
+      return keys.some((k) => w.includes(` ${k} `));
+    };
+  }, [admin, city, cityOf]);
+
   const base = useMemo(() => {
     const s = q.trim().toLowerCase();
     const d = phoneDigits(q);
     return list.filter((c) => c.createdAt.slice(0, 10) >= range.from && c.createdAt.slice(0, 10) <= range.to
-      && (!branch || c.branchId === branch)
+      && (!branch || c.branchId === branch) && inCity(c)
       && (!s || `${c.ref} ${c.name} ${c.email} ${c.refNumber} ${c.location} ${c.subject} ${c.message}`.toLowerCase().includes(s) || (d.length >= 4 && phoneDigits(c.phone).includes(d))));
-  }, [list, range, branch, q]);
+  }, [list, range, branch, q, inCity]);
   const counts = useMemo(() => {
     const k: Record<string, number> = { open: 0, overdue: 0, unassigned: 0, all: base.length };
     for (const c of base) {
@@ -54,7 +79,7 @@ function Complaints() {
     return k;
   }, [base]);
   const rows = useMemo(() => base.filter((c) => view === 'all' ? true : view === 'open' ? OPEN_STATUSES.has(c.status) : view === 'overdue' ? isOverdue(c) : view === 'unassigned' ? !c.branchId : c.status === view), [base, view]);
-  const [shown, sentinel, more] = useInfinite(rows.length, JSON.stringify([view, q, branch, range.from, range.to]));
+  const [shown, sentinel, more] = useInfinite(rows.length, JSON.stringify([view, q, branch, city, range.from, range.to]));
   const current = openId ? list.find((c) => c.id === openId) ?? null : null;
 
   const doExport = () => exportSheets([{
@@ -84,7 +109,7 @@ function Complaints() {
         {admin && <select aria-label="Branch" className="input w-auto min-w-[150px]" value={branch} onChange={(e) => setBranch(e.target.value)}><option value="">All branches</option>{branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select>}
         <button className="btn-ghost" onClick={doExport} disabled={!rows.length}><Download size={17} />Excel</button>
       </div>
-      <DateRangeBar range={range} onChange={setRange} />
+      <DateRangeBar range={range} onChange={setRange} city={admin ? { cities, value: city, onChange: setCity } : undefined} />
       <div className="-mx-3 flex gap-2 overflow-x-auto px-3 pb-1 sm:-mx-4 sm:px-4 lg:-mx-6 lg:px-6">
         {chips.map(([k, label, tone]) => (
           <button key={k} onClick={() => setView(k)} className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ring-1 ${view === k ? 'bg-rose-600 text-white ring-rose-600' : tone === 'red' ? 'bg-red-50 text-red-700 ring-red-300' : tone === 'amber' ? 'bg-amber-50 text-amber-800 ring-amber-300' : 'bg-white text-slate-700 ring-slate-300'}`}>

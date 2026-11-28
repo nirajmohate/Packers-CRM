@@ -1,5 +1,27 @@
 # Cloud Packers CRM: Stage 2 (database + login)
 
+## What changed in 0.17.2 — Android app
+
+- Added `public/.well-known/assetlinks.json` for the Android app built with PWABuilder (package `app.vercel.packers_crm_x4bn.twa`). It lets the app open full screen without the browser bar. The file opens without login.
+- If the web address changes later (for example to `crm.cloudpackers.com`), build a new APK in PWABuilder **with the same signing key** and replace this file with the new one.
+- Keep the signing key file and its passwords safe and private. Never put them in this project.
+
+## What changed in 0.17.1
+
+- Complaints filter (admin): the City list and the dates are on one screen. City is a dropdown with all 17 branch cities; the dates keep *Custom* with start and end date.
+
+## What changed in 0.17.0
+
+- **Complaints → City filter (admin only).** The *More* button on the Complaints page now has two tabs: **Date** and **City**. Pick a city from your branches. The admin no longer has to switch branch to see one city's complaints. A *City: …* chip shows the active filter; × removes it. Unassigned complaints count for a city when their location is in that city (PCMC → Pune).
+- **PDF header:** the truck picture is replaced by an **ISO 9001:2015 Certified** seal, a **24x7 Support** badge and a **33 Branches – All over India** badge. Change these texts in `lib/brand.ts` → `PDF_BADGES`.
+- **PDF total:** the Total bar has an orange accent, like the sample.
+- **PDF footer:** customer and authorised signatures sit at the bottom of the last page with small icons and a houses illustration between them; the page number band has lines on both sides.
+
+## What changed in 0.16.4 — date filter
+
+- Fixed: the **More** button on the dashboard, Customers and Complaints did nothing (its list was hidden inside the button group).
+- **More** now opens a *Date range* dialog like Google Search Console: Today, Last 7 / 28 days, Last 3 / 6 / 12 / 16 months, This / Last financial year, All time, Custom (start and end date). Each choice shows its dates. Cancel / Apply; Esc or a click outside closes it. On phones it opens from the bottom.
+
 ## What changed in 0.16.3
 
 - `website/crm-complaint-hook.php` now writes one line per complaint to `crm-complaint-log.php` (same folder): time, HTTP code, CRM reply, connection error. No customer details. It cannot be opened from a browser; read it in Hostinger File Manager.
