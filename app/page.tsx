@@ -1,6 +1,7 @@
 'use client';
 import SecurityAlerts from '@/components/SecurityAlerts';
 import ComplaintsCard from '@/components/ComplaintsCard';
+import PushSetting from '@/components/PushSetting';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { CalendarClock, Check, Phone, Plus, Sun, X } from 'lucide-react';
@@ -170,6 +171,7 @@ export default function Dashboard() {
   return (
     <div className="space-y-4">
       {me?.role === 'admin' && <SecurityAlerts />}
+      {(me?.role === 'admin' || me?.role === 'manager') && <PushSetting variant="banner" />}
       <section className="overflow-hidden rounded-3xl border border-sky-200 bg-gradient-to-br from-sky-100 via-blue-50 to-sky-200 shadow-sm sm:flex sm:items-stretch">
         <div className="flex flex-col justify-center p-4 sm:w-[46%] sm:shrink-0 lg:px-6 lg:py-4">
           <div className="flex items-start gap-3">

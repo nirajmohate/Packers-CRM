@@ -206,3 +206,23 @@ const ComplaintSchema = new Schema<any>({
 ComplaintSchema.index({ branchId: 1, createdAt: -1 });
 ComplaintSchema.index({ dupKey: 1, createdAt: -1 });
 export const Complaint = define('Complaint', ComplaintSchema);
+
+/** A phone (or browser) that turned on notifications. Tied to the signed-in device: signing out stops them. */
+const PushSubSchema = new Schema<any>({
+  userId: { type: String, required: true, index: true },
+  sidHash: { type: String, required: true },
+  endpoint: { type: String, required: true, unique: true },
+  p256dh: { type: String, required: true },
+  auth: { type: String, required: true },
+  device: String,
+  lastOkAt: Date,
+  fails: { type: Number, default: 0 },
+}, { ...base, timestamps: true });
+export const PushSub = define('PushSub', PushSubSchema);
+
+/** Which reminder went to whom, so the same reminder is not sent twice. Removed after 10 days. */
+const PushLogSchema = new Schema<any>({
+  key: { type: String, required: true, unique: true },
+}, { ...base, timestamps: true });
+PushLogSchema.index({ createdAt: 1 }, { expireAfterSeconds: 10 * 24 * 3600 });
+export const PushLog = define('PushLog', PushLogSchema);

@@ -1,4 +1,5 @@
 'use client';
+import PushSetting from '@/components/PushSetting';
 import Link from 'next/link';
 import ConfirmPasswordHost from './ConfirmPasswordHost';
 import { usePathname, useRouter } from 'next/navigation';
@@ -223,6 +224,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
         </div>
         <div className="grid gap-3">
           {user?.role === 'admin' ? <><Link href="/change-password?voluntary=1" className="btn-ghost"><KeyRound size={17} />Change password</Link><Link href="/security" className="btn-ghost"><ShieldCheck size={17} />Security · two-step login</Link></> : <p className="rounded-xl bg-amber-50 p-3 text-xs text-amber-800">To change your password, contact the admin.</p>}
+          {(user?.role === 'admin' || user?.role === 'manager') && <PushSetting variant="row" />}
           <button className="btn-danger" onClick={() => signOut()}><LogOut size={17} />Sign out</button>
         </div>
       </Sheet>

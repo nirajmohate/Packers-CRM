@@ -1,6 +1,6 @@
 {
   "name": "packers-crm",
-  "version": "0.17.2",
+  "version": "0.18.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "wipe-all": "tsx scripts/wipe-all.ts",
     "reset-password": "tsx scripts/reset-password.ts",
-    "list-users": "tsx scripts/reset-password.ts"
+    "list-users": "tsx scripts/reset-password.ts",
+    "vapid-keys": "node scripts/vapid-keys.mjs"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

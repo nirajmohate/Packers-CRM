@@ -1,5 +1,25 @@
 # Cloud Packers CRM: Stage 2 (database + login)
 
+## What changed in 0.18.0 — phone notifications
+
+Notifications like WhatsApp for the **admin and TSMs** (not the team), in the Android app and in Chrome:
+- **Morning (about 9 am):** packing **today and tomorrow** (from packing lists and quotations with a packing date; rejected, cancelled and deleted ones are skipped). One message per person, e.g. "Packing · 1 today · 2 tomorrow".
+- **Morning and evening (about 6 pm):** complaints with **no status change for 48 hours**. Tapping it opens Complaints → Over 48 h.
+- The admin gets every branch (plus complaints not yet forwarded); a TSM only their own branch.
+- Each phone turns it on once: dashboard → **Turn on**, or Account → *Phone notifications*. *Send test* checks it.
+- Signing out of a device (or from the device list) stops its notifications.
+
+### Set up (one time)
+1. On your computer, in the project folder: `npm run vapid-keys`. It prints two lines.
+2. Vercel → Settings → Environment Variables, add:
+   - `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` (the two printed values)
+   - `VAPID_SUBJECT` = `mailto:info@cloudpackers.com`
+   - `CRON_SECRET` = any long random text (at least 16 characters)
+3. Redeploy. `vercel.json` already schedules the job twice a day (Vercel sends CRON_SECRET by itself). On the free plan Vercel may run it up to an hour after the set time.
+4. Open the app → **Turn on** → Allow → Account → **Send test**.
+
+On your own server later: make a cron job that opens `https://<your address>/api/cron/notify?slot=morning` at 9 am and `?slot=evening` at 6 pm with the header `Authorization: Bearer <CRON_SECRET>`.
+
 ## What changed in 0.17.2 — Android app
 
 - Added `public/.well-known/assetlinks.json` for the Android app built with PWABuilder (package `app.vercel.packers_crm_x4bn.twa`). It lets the app open full screen without the browser bar. The file opens without login.
